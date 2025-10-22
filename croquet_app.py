@@ -1,9 +1,11 @@
+```python
 import streamlit as st
 import pandas as pd
 import sqlite3
 import random
 import itertools
 import csv
+import os
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from datetime import datetime
@@ -12,7 +14,7 @@ class Player:
     def __init__(self, id, name):
         self.id = id
         self.name = name
-        self.points = 0  # Points from wins (1 per win, 0 for bye)
+        self.points = 0  # Points from wins (1 per win, 0 for bye/draw)
         self.wins = 0  # Number of wins
         self.hoops_scored = 0  # Total hoops scored
         self.hoops_conceded = 0  # Total hoops conceded
@@ -35,8 +37,7 @@ class Match:
     def set_result(self, hoops1, hoops2):
         self.result = (hoops1, hoops2)
         if self.player2 is None:  # Bye
-            self.player1.points = self.player1.points  # 0 points for bye
-            return
+            return  # 0 points for bye
         # Update hoops
         self.player1.hoops_scored += hoops1
         self.player1.hoops_conceded += hoops2
@@ -49,7 +50,6 @@ class Match:
         elif hoops2 > hoops1:
             self.player2.wins += 1
             self.player2.points += 1
-        # No points for draw
 
     def get_scores(self):
         return self.result if self.result else (0, 0)
@@ -70,7 +70,7 @@ class SwissTournament:
 
         for round_num in range(self.num_rounds):
             round_pairings = []
-            available_players = [p for p in self.players]
+            available_players = self.players.copy()
             random.shuffle(available_players)
             used_players = set()
 
@@ -114,7 +114,7 @@ class SwissTournament:
             match = self.rounds[round_num][match_num]
             # Reset previous results
             old_hoops1, old_hoops2 = match.get_scores()
-            if match.player2 is not None:
+            if match.player2 is not None and match.result is not None:
                 match.player1.hoops_scored -= old_hoops1
                 match.player1.hoops_conceded -= old_hoops2
                 match.player2.hoops_scored -= old_hoops2
@@ -148,7 +148,7 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS tournaments
                  (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS players
-                 (tournament_id INTEGER, player_id INTEGER, name TEXT, points REAL, wins INTEGER,
+                 (tournament_id INTEGER, player_id INTEGER, name TEXT, points INTEGER, wins INTEGER,
                   hoops_scored INTEGER, hoops_conceded INTEGER,
                   PRIMARY KEY (tournament_id, player_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS matches
@@ -159,95 +159,110 @@ def init_db():
 
 # Save tournament data to database
 def save_to_db(tournament, tournament_name, conn):
-    c = conn.cursor()
-    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
-    tournament_id = c.lastrowid
+    try:
+        c = conn.cursor()
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
+        tournament_id = c.lastrowid
 
-    for player in tournament.players:
-        c.execute("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  (tournament_id, player.id, player.name, player.points, player.wins, player.hoops_scored, player.hoops_conceded))
+        for player in tournament.players:
+            c.execute("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (tournament_id, player.id, player.name, player.points, player.wins, player.hoops_scored, player.hoops_conceded))
 
-    for round_num, round_pairings in enumerate(tournament.rounds):
-        for match_num, match in enumerate(round_pairings):
-            hoops1, hoops2 = match.get_scores()
-            player2_id = match.player2.id if match.player2 else None
-            c.execute("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, hoops1, hoops2) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      (tournament_id, round_num, match_num, match.player1.id, player2_id, hoops1, hoops2))
+        for round_num, round_pairings in enumerate(tournament.rounds):
+            for match_num, match in enumerate(round_pairings):
+                hoops1, hoops2 = match.get_scores()
+                player2_id = match.player2.id if match.player2 else None
+                c.execute("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, hoops1, hoops2) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                          (tournament_id, round_num, match_num, match.player1.id, player2_id, hoops1, hoops2))
 
-    conn.commit()
+        conn.commit()
+    except sqlite3.Error as e:
+        st.error(f"Database error: {e}")
+    finally:
+        conn.close()
 
 # Export to CSV
 def export_to_csv(tournament, tournament_name):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{tournament_name}_{timestamp}.csv"
-    with open(filename, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['Round', 'Match', 'Player 1', 'Player 2', 'Hoops 1', 'Hoops 2'])
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{tournament_name}_{timestamp}.csv"
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Round', 'Match', 'Player 1', 'Player 2', 'Hoops 1', 'Hoops 2'])
+            for round_num, round_pairings in enumerate(tournament.rounds):
+                for match_num, match in enumerate(round_pairings):
+                    player2 = match.player2.name if match.player2 else 'BYE'
+                    hoops1, hoops2 = match.get_scores()
+                    writer.writerow([round_num + 1, match_num + 1, match.player1.name, player2, hoops1, hoops2])
+        return filename
+    except IOError as e:
+        st.error(f"Error writing CSV: {e}")
+        return None
+
+# Export to Excel
+def export_to_excel(tournament, tournament_name):
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{tournament_name}_{timestamp}.xlsx"
+        data = []
         for round_num, round_pairings in enumerate(tournament.rounds):
             for match_num, match in enumerate(round_pairings):
                 player2 = match.player2.name if match.player2 else 'BYE'
                 hoops1, hoops2 = match.get_scores()
-                writer.writerow([round_num + 1, match_num + 1, match.player1.name, player2, hoops1, hoops2])
-    return filename
-
-# Export to Excel
-def export_to_excel(tournament, tournament_name):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{tournament_name}_{timestamp}.xlsx"
-    data = []
-    for round_num, round_pairings in enumerate(tournament.rounds):
-        for match_num, match in enumerate(round_pairings):
-            player2 = match.player2.name if match.player2 else 'BYE'
-            hoops1, hoops2 = match.get_scores()
-            data.append({
-                'Round': round_num + 1,
-                'Match': match_num + 1,
-                'Player 1': match.player1.name,
-                'Player 2': player2,
-                'Hoops 1': hoops1,
-                'Hoops 2': hoops2
-            })
-    df = pd.DataFrame(data)
-    df.to_excel(filename, index=False)
-    
-    # Format Excel file
-    wb = load_workbook(filename)
-    ws = wb.active
-    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
-        for cell in row:
-            cell.alignment = Alignment(horizontal='center')
-    wb.save(filename)
-    return filename
+                data.append({
+                    'Round': round_num + 1,
+                    'Match': match_num + 1,
+                    'Player 1': match.player1.name,
+                    'Player 2': player2,
+                    'Hoops 1': hoops1,
+                    'Hoops 2': hoops2
+                })
+        df = pd.DataFrame(data)
+        df.to_excel(filename, index=False)
+        
+        # Format Excel file
+        wb = load_workbook(filename)
+        ws = wb.active
+        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+            for cell in row:
+                cell.alignment = Alignment(horizontal='center')
+        wb.save(filename)
+        return filename
+    except Exception as e:
+        st.error(f"Error writing Excel: {e}")
+        return None
 
 # Custom number input with + and - buttons
-def number_input_with_buttons(label, key, value=0, min_value=0, max_value=100, step=1):
+def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
+    # Initialize session state for this key if not set
+    if f"{key}_temp" not in st.session_state:
+        st.session_state[f"{key}_temp"] = int(value)  # Ensure integer
+
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
         if st.button("−", key=f"minus_{key}"):
-            new_value = max(min_value, value - step)
-            st.session_state[f"{key}_temp"] = new_value
+            st.session_state[f"{key}_temp"] = max(min_value, st.session_state[f"{key}_temp"] - step)
     with col2:
-        current_value = st.session_state.get(f"{key}_temp", value)
+        current_value = st.session_state[f"{key}_temp"]
         st.session_state[f"{key}_temp"] = st.number_input(
             label, 
             min_value=min_value, 
             max_value=max_value, 
-            value=current_value, 
+            value=int(current_value),  # Ensure integer
             step=step,
             format="%d",
             key=key
         )
     with col3:
         if st.button("+", key=f"plus_{key}"):
-            new_value = min(max_value, value + step)
-            st.session_state[f"{key}_temp"] = new_value
+            st.session_state[f"{key}_temp"] = min(max_value, st.session_state[f"{key}_temp"] + step)
     
-    return st.session_state[f"{key}_temp"]
+    return int(st.session_state[f"{key}_temp"])  # Return integer
 
 # Streamlit app
 def main():
-    st.title("Swiss Tournament Manager")
+    st.title("Croquet Tournament Manager")
 
     # Initialize session state
     if 'tournament' not in st.session_state:
@@ -260,7 +275,7 @@ def main():
     with st.form("tournament_form"):
         st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name)
         player_input = st.text_area("Enter player names (one per line)", "\n".join(st.session_state.players))
-        st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds)
+        st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds, step=1)
         submitted = st.form_submit_button("Create Tournament")
 
         if submitted and st.session_state.tournament_name and player_input:
@@ -268,7 +283,11 @@ def main():
             if len(st.session_state.players) < 2:
                 st.error("At least 2 players are required!")
             else:
-                st.session_state.tournament = SwissTournament(st.session_state.players, st.session_state.num_rounds)
+                # Clear all previous hoop input states
+                for key in list(st.session_state.keys()):
+                    if key.endswith("_temp"):
+                        del st.session_state[key]
+                st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
                 st.success("Tournament created!")
 
     # Display pairings and record results
@@ -298,8 +317,9 @@ def main():
                         hoops1 = number_input_with_buttons(
                             f"{match.player1.name}",
                             hoops1_key,
+                            value=int(match.get_scores()[0]),  # Ensure integer
                             key=f"{hoops1_key}_input",
-                            value=match.get_scores()[0]
+                            max_value=26  # Croquet-specific max hoops
                         )
                     
                     with col3:
@@ -307,21 +327,20 @@ def main():
                         hoops2 = number_input_with_buttons(
                             f"{match.player2.name}",
                             hoops2_key,
+                            value=int(match.get_scores()[1]),  # Ensure integer
                             key=f"{hoops2_key}_input",
-                            value=match.get_scores()[1]
+                            max_value=26  # Croquet-specific max hoops
                         )
                     
                     with col4:
                         if st.button(f"Update Result", key=f"update_r{round_num}_m{match_num}"):
                             tournament.record_result(round_num, match_num, hoops1, hoops2)
                             st.success("Result updated!")
-                            st.rerun()
 
         # Save to database
         if st.button("Save Tournament"):
             save_to_db(tournament, st.session_state.tournament_name, conn)
             st.success("Tournament saved to database!")
-            conn.close()
 
         # Display standings
         st.subheader("Current Standings")
@@ -340,23 +359,28 @@ def main():
         with col_export1:
             if st.button("Export to CSV"):
                 filename = export_to_csv(tournament, st.session_state.tournament_name)
-                with open(filename, 'rb') as f:
-                    st.download_button(
-                        label="Download CSV",
-                        data=f.read(),
-                        file_name=filename,
-                        mime='text/csv'
-                    )
+                if filename:
+                    with open(filename, 'rb') as f:
+                        st.download_button(
+                            label="Download CSV",
+                            data=f.read(),
+                            file_name=filename,
+                            mime='text/csv'
+                        )
+                    os.remove(filename)  # Clean up temporary file
         with col_export2:
             if st.button("Export to Excel"):
                 filename = export_to_excel(tournament, st.session_state.tournament_name)
-                with open(filename, 'rb') as f:
-                    st.download_button(
-                        label="Download Excel",
-                        data=f.read(),
-                        file_name=filename,
-                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                    )
+                if filename:
+                    with open(filename, 'rb') as f:
+                        st.download_button(
+                            label="Download Excel",
+                            data=f.read(),
+                            file_name=filename,
+                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        )
+                    os.remove(filename)  # Clean up temporary file
 
 if __name__ == "__main__":
     main()
+```
