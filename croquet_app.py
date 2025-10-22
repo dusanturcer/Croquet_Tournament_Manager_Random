@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -114,7 +113,7 @@ class SwissTournament:
             match = self.rounds[round_num][match_num]
             # Reset previous results
             old_hoops1, old_hoops2 = match.get_scores()
-            if match.player2 is not None and match.result is not None:
+            if match.result is not None and match.player2 is not None:
                 match.player1.hoops_scored -= old_hoops1
                 match.player1.hoops_conceded -= old_hoops2
                 match.player2.hoops_scored -= old_hoops2
@@ -383,4 +382,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
