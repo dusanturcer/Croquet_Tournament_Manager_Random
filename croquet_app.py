@@ -12,33 +12,47 @@ class Player:
     def __init__(self, id, name):
         self.id = id
         self.name = name
-        self.points = 0
+        self.points = 0  # Points from wins (1 per win, 0 for bye)
+        self.wins = 0  # Number of wins
+        self.hoops_scored = 0  # Total hoops scored
+        self.hoops_conceded = 0  # Total hoops conceded
         self.opponents = set()
 
     def add_opponent(self, opponent_id):
         self.opponents.add(opponent_id)
 
     def __repr__(self):
-        return f"Player(id={self.id}, name={self.name}, points={self.points})"
+        return (f"Player(id={self.id}, name={self.name}, points={self.points}, "
+                f"wins={self.wins}, hoops_scored={self.hoops_scored}, "
+                f"hoops_conceded={self.hoops_conceded})")
 
 class Match:
     def __init__(self, player1, player2):
         self.player1 = player1
         self.player2 = player2
-        self.result = None
+        self.result = None  # (hoops1, hoops2)
 
-    def set_result(self, result):
-        self.result = result
+    def set_result(self, hoops1, hoops2):
+        self.result = (hoops1, hoops2)
         if self.player2 is None:  # Bye
-            self.player1.points += 1
+            self.player1.points = self.player1.points  # 0 points for bye
             return
-        if result == 1:
+        # Update hoops
+        self.player1.hoops_scored += hoops1
+        self.player1.hoops_conceded += hoops2
+        self.player2.hoops_scored += hoops2
+        self.player2.hoops_conceded += hoops1
+        # Determine winner
+        if hoops1 > hoops2:
+            self.player1.wins += 1
             self.player1.points += 1
-        elif result == 2:
+        elif hoops2 > hoops1:
+            self.player2.wins += 1
             self.player2.points += 1
-        elif result == 0:
-            self.player1.points += 0.5
-            self.player2.points += 0.5
+        # No points for draw
+
+    def get_scores(self):
+        return self.result if self.result else (0, 0)
 
     def __repr__(self):
         return f"Match({self.player1.name} vs {self.player2.name if self.player2 else 'BYE'}, result={self.result})"
@@ -95,15 +109,29 @@ class SwissTournament:
             if len(used_players) < len(self.players):
                 st.warning(f"Only {len(used_players)}/{len(self.players)} players paired in round {round_num + 1}")
 
-    def record_result(self, round_num, match_num, result):
+    def record_result(self, round_num, match_num, hoops1, hoops2):
         if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num]):
             match = self.rounds[round_num][match_num]
-            match.set_result(result)
+            # Reset previous results
+            old_hoops1, old_hoops2 = match.get_scores()
+            if match.player2 is not None:
+                match.player1.hoops_scored -= old_hoops1
+                match.player1.hoops_conceded -= old_hoops2
+                match.player2.hoops_scored -= old_hoops2
+                match.player2.hoops_conceded -= old_hoops1
+                if old_hoops1 > old_hoops2:
+                    match.player1.wins -= 1
+                    match.player1.points -= 1
+                elif old_hoops2 > old_hoops1:
+                    match.player2.wins -= 1
+                    match.player2.points -= 1
+            # Set new results
+            match.set_result(hoops1, hoops2)
         else:
             st.error(f"Invalid round_num {round_num} or match_num {match_num}")
 
     def get_standings(self):
-        return sorted(self.players, key=lambda p: (-p.points, p.id))
+        return sorted(self.players, key=lambda p: (p.wins, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
 
     def get_round_pairings(self, round_num):
         if 0 <= round_num < len(self.rounds):
@@ -120,11 +148,12 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS tournaments
                  (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS players
-                 (tournament_id INTEGER, player_id INTEGER, name TEXT, points REAL,
+                 (tournament_id INTEGER, player_id INTEGER, name TEXT, points REAL, wins INTEGER,
+                  hoops_scored INTEGER, hoops_conceded INTEGER,
                   PRIMARY KEY (tournament_id, player_id))''')
     c.execute('''CREATE TABLE IF NOT EXISTS matches
                  (tournament_id INTEGER, round_num INTEGER, match_num INTEGER,
-                  player1_id INTEGER, player2_id INTEGER, result INTEGER)''')
+                  player1_id INTEGER, player2_id INTEGER, hoops1 INTEGER, hoops2 INTEGER)''')
     conn.commit()
     return conn
 
@@ -136,14 +165,15 @@ def save_to_db(tournament, tournament_name, conn):
     tournament_id = c.lastrowid
 
     for player in tournament.players:
-        c.execute("INSERT INTO players (tournament_id, player_id, name, points) VALUES (?, ?, ?, ?)",
-                  (tournament_id, player.id, player.name, player.points))
+        c.execute("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (tournament_id, player.id, player.name, player.points, player.wins, player.hoops_scored, player.hoops_conceded))
 
     for round_num, round_pairings in enumerate(tournament.rounds):
         for match_num, match in enumerate(round_pairings):
+            hoops1, hoops2 = match.get_scores()
             player2_id = match.player2.id if match.player2 else None
-            c.execute("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, result) VALUES (?, ?, ?, ?, ?, ?)",
-                      (tournament_id, round_num, match_num, match.player1.id, player2_id, match.result))
+            c.execute("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, hoops1, hoops2) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      (tournament_id, round_num, match_num, match.player1.id, player2_id, hoops1, hoops2))
 
     conn.commit()
 
@@ -153,12 +183,12 @@ def export_to_csv(tournament, tournament_name):
     filename = f"{tournament_name}_{timestamp}.csv"
     with open(filename, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Round', 'Match', 'Player 1', 'Player 2', 'Result'])
+        writer.writerow(['Round', 'Match', 'Player 1', 'Player 2', 'Hoops 1', 'Hoops 2'])
         for round_num, round_pairings in enumerate(tournament.rounds):
             for match_num, match in enumerate(round_pairings):
                 player2 = match.player2.name if match.player2 else 'BYE'
-                result = match.result if match.result is not None else 'Pending'
-                writer.writerow([round_num + 1, match_num + 1, match.player1.name, player2, result])
+                hoops1, hoops2 = match.get_scores()
+                writer.writerow([round_num + 1, match_num + 1, match.player1.name, player2, hoops1, hoops2])
     return filename
 
 # Export to Excel
@@ -169,13 +199,14 @@ def export_to_excel(tournament, tournament_name):
     for round_num, round_pairings in enumerate(tournament.rounds):
         for match_num, match in enumerate(round_pairings):
             player2 = match.player2.name if match.player2 else 'BYE'
-            result = match.result if match.result is not None else 'Pending'
+            hoops1, hoops2 = match.get_scores()
             data.append({
                 'Round': round_num + 1,
                 'Match': match_num + 1,
                 'Player 1': match.player1.name,
                 'Player 2': player2,
-                'Result': result
+                'Hoops 1': hoops1,
+                'Hoops 2': hoops2
             })
     df = pd.DataFrame(data)
     df.to_excel(filename, index=False)
@@ -188,6 +219,31 @@ def export_to_excel(tournament, tournament_name):
             cell.alignment = Alignment(horizontal='center')
     wb.save(filename)
     return filename
+
+# Custom number input with + and - buttons
+def number_input_with_buttons(label, key, value=0, min_value=0, max_value=100, step=1):
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.button("−", key=f"minus_{key}"):
+            new_value = max(min_value, value - step)
+            st.session_state[f"{key}_temp"] = new_value
+    with col2:
+        current_value = st.session_state.get(f"{key}_temp", value)
+        st.session_state[f"{key}_temp"] = st.number_input(
+            label, 
+            min_value=min_value, 
+            max_value=max_value, 
+            value=current_value, 
+            step=step,
+            format="%d",
+            key=key
+        )
+    with col3:
+        if st.button("+", key=f"plus_{key}"):
+            new_value = min(max_value, value + step)
+            st.session_state[f"{key}_temp"] = new_value
+    
+    return st.session_state[f"{key}_temp"]
 
 # Streamlit app
 def main():
@@ -223,27 +279,43 @@ def main():
         for round_num in range(tournament.num_rounds):
             st.subheader(f"Round {round_num + 1} Pairings")
             pairings = tournament.get_round_pairings(round_num)
+            
             for match_num, match in enumerate(pairings):
                 with st.container():
-                    col1, col2, col3 = st.columns([2, 2, 1])
                     if match.player2 is None:
-                        col1.write(f"{match.player1.name} gets a bye")
-                    else:
-                        col1.write(f"{match.player1.name} vs {match.player2.name}")
-                        with col2:
-                            result = st.radio(
-                                f"Result for {match.player1.name} vs {match.player2.name}",
-                                options=["Pending", f"{match.player1.name} wins", f"{match.player2.name} wins", "Draw"],
-                                key=f"result_{round_num}_{match_num}",
-                                index=0
-                            )
-                            if result != "Pending":
-                                result_map = {
-                                    f"{match.player1.name} wins": 1,
-                                    f"{match.player2.name} wins": 2,
-                                    "Draw": 0
-                                }
-                                tournament.record_result(round_num, match_num, result_map[result])
+                        st.write(f"**{match.player1.name} gets a BYE** (0 points)")
+                        continue
+                    
+                    col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 2])
+                    
+                    with col1:
+                        st.write(f"**Match {match_num + 1}:**")
+                        st.write(f"{match.player1.name} vs {match.player2.name}")
+                    
+                    with col2:
+                        st.write("Hoops Scored")
+                        hoops1_key = f"hoops1_r{round_num}_m{match_num}"
+                        hoops1 = number_input_with_buttons(
+                            f"{match.player1.name}",
+                            hoops1_key,
+                            key=f"{hoops1_key}_input",
+                            value=match.get_scores()[0]
+                        )
+                    
+                    with col3:
+                        hoops2_key = f"hoops2_r{round_num}_m{match_num}"
+                        hoops2 = number_input_with_buttons(
+                            f"{match.player2.name}",
+                            hoops2_key,
+                            key=f"{hoops2_key}_input",
+                            value=match.get_scores()[1]
+                        )
+                    
+                    with col4:
+                        if st.button(f"Update Result", key=f"update_r{round_num}_m{match_num}"):
+                            tournament.record_result(round_num, match_num, hoops1, hoops2)
+                            st.success("Result updated!")
+                            st.rerun()
 
         # Save to database
         if st.button("Save Tournament"):
@@ -254,7 +326,13 @@ def main():
         # Display standings
         st.subheader("Current Standings")
         standings = tournament.get_standings()
-        standings_data = [{'Name': p.name, 'Points': p.points} for p in standings]
+        standings_data = [{
+            'Rank': i+1,
+            'Name': p.name,
+            'Wins': p.wins,
+            'Net Hoops': p.hoops_scored - p.hoops_conceded,
+            'Hoops Scored': p.hoops_scored
+        } for i, p in enumerate(standings)]
         st.dataframe(pd.DataFrame(standings_data))
 
         # Export options
@@ -262,21 +340,23 @@ def main():
         with col_export1:
             if st.button("Export to CSV"):
                 filename = export_to_csv(tournament, st.session_state.tournament_name)
-                st.download_button(
-                    label="Download CSV",
-                    data=open(filename, 'rb').read(),
-                    file_name=filename,
-                    mime='text/csv'
-                )
+                with open(filename, 'rb') as f:
+                    st.download_button(
+                        label="Download CSV",
+                        data=f.read(),
+                        file_name=filename,
+                        mime='text/csv'
+                    )
         with col_export2:
             if st.button("Export to Excel"):
                 filename = export_to_excel(tournament, st.session_state.tournament_name)
-                st.download_button(
-                    label="Download Excel",
-                    data=open(filename, 'rb').read(),
-                    file_name=filename,
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                )
+                with open(filename, 'rb') as f:
+                    st.download_button(
+                        label="Download Excel",
+                        data=f.read(),
+                        file_name=filename,
+                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    )
 
 if __name__ == "__main__":
     main()
