@@ -34,7 +34,7 @@ class Match:
         self.result = None  # (hoops1, hoops2)
 
     def set_result(self, hoops1, hoops2):
-        self.result = (hoops1, hoops2)
+        self.result = (int(hoops1), int(hoops2))  # Ensure integer
         if self.player2 is None:  # Bye
             return  # 0 points for bye
         # Update hoops
@@ -236,7 +236,7 @@ def export_to_excel(tournament, tournament_name):
 def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
     # Initialize session state for this key if not set
     if f"{key}_temp" not in st.session_state:
-        st.session_state[f"{key}_temp"] = int(value)  # Ensure integer
+        st.session_state[f"{key}_temp"] = int(value if isinstance(value, (int, float)) else 0)  # Ensure integer
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
@@ -244,11 +244,15 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
             st.session_state[f"{key}_temp"] = max(min_value, st.session_state[f"{key}_temp"] - step)
     with col2:
         current_value = st.session_state[f"{key}_temp"]
+        try:
+            current_value = int(current_value)  # Ensure integer
+        except (TypeError, ValueError):
+            current_value = 0  # Fallback to 0 if invalid
         st.session_state[f"{key}_temp"] = st.number_input(
-            label, 
-            min_value=min_value, 
-            max_value=max_value, 
-            value=int(current_value),  # Ensure integer
+            label,
+            min_value=min_value,
+            max_value=max_value,
+            value=current_value,
             step=step,
             format="%d",
             key=key
@@ -313,23 +317,31 @@ def main():
                     with col2:
                         st.write("Hoops Scored")
                         hoops1_key = f"hoops1_r{round_num}_m{match_num}"
-                        hoops1 = number_input_with_buttons(
-                            f"{match.player1.name}",
-                            hoops1_key,
-                            value=int(match.get_scores()[0]),  # Ensure integer
-                            key=f"{hoops1_key}_input",
-                            max_value=26  # Croquet-specific max hoops
-                        )
+                        try:
+                            hoops1 = number_input_with_buttons(
+                                f"{match.player1.name}",
+                                hoops1_key,
+                                value=int(match.get_scores()[0] if match.get_scores()[0] is not None else 0),
+                                key=f"{hoops1_key}_input",
+                                max_value=26
+                            )
+                        except (TypeError, ValueError) as e:
+                            st.error(f"Error setting hoops for {match.player1.name}: {e}")
+                            hoops1 = 0
                     
                     with col3:
                         hoops2_key = f"hoops2_r{round_num}_m{match_num}"
-                        hoops2 = number_input_with_buttons(
-                            f"{match.player2.name}",
-                            hoops2_key,
-                            value=int(match.get_scores()[1]),  # Ensure integer
-                            key=f"{hoops2_key}_input",
-                            max_value=26  # Croquet-specific max hoops
-                        )
+                        try:
+                            hoops2 = number_input_with_buttons(
+                                f"{match.player2.name}",
+                                hoops2_key,
+                                value=int(match.get_scores()[1] if match.get_scores()[1] is not None else 0),
+                                key=f"{hoops2_key}_input",
+                                max_value=26
+                            )
+                        except (TypeError, ValueError) as e:
+                            st.error(f"Error setting hoops for {match.player2.name}: {e}")
+                            hoops2 = 0
                     
                     with col4:
                         if st.button(f"Update Result", key=f"update_r{round_num}_m{match_num}"):
