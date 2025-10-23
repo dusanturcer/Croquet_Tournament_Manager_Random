@@ -60,18 +60,15 @@ class SwissTournament:
         self.num_rounds = num_rounds
         self.rounds = []
         
-        # FIX: Generate pairings for ALL rounds immediately upon creation.
-        # This ensures all rounds are displayed, even if R2 is based on R1's initial random state.
+        # Generate pairings for ALL rounds immediately
         for round_num in range(self.num_rounds):
             initial = (round_num == 0)
-            # Pass the standings from the (fully calculated) previous round if available
             self.generate_round_pairings(round_num, initial=initial) 
 
     def generate_round_pairings(self, round_num, initial=False):
         while len(self.rounds) <= round_num:
             self.rounds.append([])
         
-        # Reset the pairings list for the specific round being generated
         self.rounds[round_num] = [] 
         round_pairings = []
         
@@ -79,7 +76,6 @@ class SwissTournament:
             available_players = self.players.copy()
             random.shuffle(available_players) 
         else:
-            # If generating a subsequent round, use the current cumulative standings
             available_players = self.get_standings()
         
         used_players = set()
@@ -105,7 +101,6 @@ class SwissTournament:
             
         remaining_players = [p for p in available_players if p.id not in used_players]
         if remaining_players:
-            # Highest ranked remaining player gets the bye
             bye_player = remaining_players[0]
             round_pairings.append(Match(bye_player, None))
         
@@ -136,10 +131,7 @@ class SwissTournament:
                         p2.wins -= 1
                         p2.points -= 1
             
-            # Set new results (handles the cumulative update)
             match.set_result(hoops1, hoops2)
-            
-            # FIX: Removed the automatic re-pairing logic here as requested.
 
     def get_standings(self):
         return sorted(self.players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
@@ -149,7 +141,7 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-# --- Database Functions (Unchanged) ---
+# --- Database Functions ---
 
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
@@ -196,7 +188,7 @@ def save_to_db(tournament, tournament_name, conn):
         st.error(f"Database error on save: {e}")
         conn.rollback() 
 
-# --- Export Functions (Unchanged) ---
+# --- Export Functions ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -240,16 +232,16 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Callback Functions (Unchanged) ---
+# --- Callback Functions ---
 
 def decrement_score(key, step, min_value):
-    # This key tracks the score displayed in the number input
+    # This key tracks the score displayed in the Streamlit number input
     input_key = f"{key}_input"
     current_value = st.session_state.get(input_key, 0)
     st.session_state[input_key] = max(min_value, current_value - step)
 
 def increment_score(key, step, max_value):
-    # This key tracks the score displayed in the number input
+    # This key tracks the score displayed in the Streamlit number input
     input_key = f"{key}_input"
     current_value = st.session_state.get(input_key, 0)
     st.session_state[input_key] = min(max_value, current_value + step)
@@ -257,20 +249,17 @@ def increment_score(key, step, max_value):
 
 # --- Streamlit UI and Logic ---
 
-# Custom number input with + and - buttons
 def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
-    # FIX: Use the native Streamlit input key for synchronization
+    # The native Streamlit input key
     input_key = f"{key}_input"
 
-    # Initialize or reset the input state based on the match object's current score
-    # This prevents the "Not Recorded" issue and keeps the input synchronized
+    # FIX 1: Synchronization - Initialize/reset the input's session state based on the match object's current score 
     if input_key not in st.session_state or st.session_state[input_key] != int(value):
         st.session_state[input_key] = int(value)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
-        # Pass the input_key to the callback so it updates the number input directly
         st.button(
             "−", 
             key=f"minus_{key}",
@@ -279,19 +268,19 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
         ) 
 
     with col2:
-        # This is the single source of truth for the score input value
-        st.session_state[input_key] = st.number_input(
+        # FIX 2: Removed the redundant assignment that caused the StreamlitAPIException.
+        # Streamlit handles the assignment to st.session_state[input_key] automatically.
+        st.number_input(
             label,
             min_value=min_value,
             max_value=max_value,
-            value=st.session_state[input_key],
+            value=st.session_state[input_key], # Use the state for initialization
             step=step,
             format="%d",
-            key=input_key # Use the specific key
+            key=input_key # Streamlit manages this key internally
         )
         
     with col3:
-        # Pass the input_key to the callback
         st.button(
             "+", 
             key=f"plus_{key}",
@@ -299,6 +288,7 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
             args=(key, step, max_value)
         )
     
+    # Return the current value stored by Streamlit in the session state
     return int(st.session_state[input_key])
 
 
@@ -327,7 +317,7 @@ def main():
                 else:
                     # Clear ALL old hoop input states
                     for key in list(st.session_state.keys()):
-                        if key.endswith(("_input")): # Only clear the input keys
+                        if key.endswith(("_input")):
                             del st.session_state[key]
                             
                     st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
@@ -360,7 +350,6 @@ def main():
                 hoops1_key = f"hoops1_r{round_num}_m{match_num}"
                 hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                 
-                # We save the root key and the full Streamlit input key
                 score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
                 with col1:
@@ -407,18 +396,17 @@ def main():
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
-                    # FIX: Retrieve score directly from the Streamlit number input's key
+                    # FIX: Retrieve score directly from the Streamlit number input's internal key
                     hoops1_key = f"{hoops1_key_root}_input"
                     hoops2_key = f"{hoops2_key_root}_input"
                     
-                    # These values are guaranteed to be the current values shown in the UI
                     hoops1 = st.session_state.get(hoops1_key, 0)
                     hoops2 = st.session_state.get(hoops2_key, 0)
                     
                     if hoops1 == hoops2 and match.player2 is not None:
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
                         
-                    # Process the result and update the tournament state
+                    # Process the result and update the tournament state (this fixes the double-click issue)
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
 
                 st.success("All visible match results updated! Standings recalculated.")
