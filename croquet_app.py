@@ -150,6 +150,12 @@ class SwissTournament:
 
 DB_PATH = 'tournament.db'
 
+def get_db_mtime(db_path=DB_PATH):
+    """Gets the last modification time of the database file."""
+    if os.path.exists(db_path):
+        return os.path.getmtime(db_path)
+    return 0.0
+
 def init_db(db_path=DB_PATH):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -181,7 +187,7 @@ def save_to_db(tournament, tournament_name, conn):
         if existing_id:
             tournament_id = existing_id[0]
             c.execute("DELETE FROM players WHERE tournament_id = ?", (tournament_id,))
-            c.execute("DELETE FROM matches WHERE tournament_id = ?", (tournament_id,))
+            c.execute("DELETE FROM MATCHES WHERE tournament_id = ?", (tournament_id,))
             c.execute("UPDATE tournaments SET date = ? WHERE id = ?", (date, tournament_id))
         else:
             c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
@@ -201,6 +207,10 @@ def save_to_db(tournament, tournament_name, conn):
         c.executemany("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, hoops1, hoops2) VALUES (?, ?, ?, ?, ?, ?, ?)", match_data)
 
         conn.commit()
+        
+        # Invalidate the cached list of tournaments on successful save
+        st.cache_data.clear() 
+        
     except sqlite3.Error as e:
         st.error(f"Database error on save: {e}")
         conn.rollback() 
@@ -216,12 +226,17 @@ def delete_tournament_from_db(tournament_id, db_path=DB_PATH):
         
         conn.commit()
         conn.close()
+        
+        # Invalidate the cached list of tournaments on successful delete
+        st.cache_data.clear()
+        
         return True
     except sqlite3.Error as e:
         st.error(f"Database error on delete: {e}")
         return False
 
-def load_tournaments_list(db_path=DB_PATH):
+@st.cache_data(show_spinner="Refreshing tournament list...")
+def load_tournaments_list(db_mtime, db_path=DB_PATH): # Added db_mtime as a cache input
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
@@ -266,19 +281,20 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
     num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
     
+    # Create the tournament object with the correct list size for rounds
     tournament = SwissTournament(players_list, num_rounds)
+    tournament.rounds = [[] for _ in range(num_rounds)] 
     
     c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ? ORDER BY round_num, match_num", (tournament_id,))
     match_data = c.fetchall()
 
-    tournament.rounds = [[] for _ in range(num_rounds)]
-    
     for r_num, m_num, p1_id, p2_id, h1, h2 in match_data:
         p1 = player_map.get(p1_id)
         p2 = player_map.get(p2_id) if p2_id != -1 else None
         
         if p1 is None: continue
 
+        # Restore opponents set, required for generating future rounds
         if p2 is not None:
             p1.add_opponent(p2_id)
             p2.add_opponent(p1_id)
@@ -286,6 +302,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         match = Match(p1, p2)
         match.result = (h1, h2)
         
+        # Ensure the round list is large enough (should be handled by the constructor now, but safe to keep)
         while len(tournament.rounds) <= r_num:
             tournament.rounds.append([])
             
@@ -297,7 +314,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     conn.close()
     return tournament, tournament_name, num_rounds
 
-# --- Export Functions (Omitted for brevity) ---
+# --- Export Functions (Unchanged) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -366,37 +383,39 @@ def load_selected_tournament(selected_id):
         try:
             tournament, tournament_name, num_rounds = load_tournament_data(selected_id)
             
+            # Clear all old match score states for the previous tournament
             for key in list(st.session_state.keys()):
-                if key.endswith(("_input")):
+                if key.startswith(("hoops1_", "hoops2_")) and key.endswith(("_input")):
                     del st.session_state[key]
             
             st.session_state.tournament = tournament
             st.session_state.tournament_name = tournament_name
             st.session_state.num_rounds = num_rounds
             st.session_state.players = [p.name for p in tournament.players]
+            st.session_state.loaded_id = selected_id # Store the ID of the currently loaded tournament
             st.success(f"Tournament '{tournament_name}' loaded successfully.")
             
         except Exception as e:
             st.error(f"Error loading tournament data: {e}")
             st.session_state.tournament = None
+            st.session_state.loaded_id = None
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     
-    # --- Custom CSS for Green Buttons and Form Submit Button (CORRECTED) ---
+    # --- Custom CSS (Unchanged) ---
     st.markdown("""
         <style>
         /* Green Button Styles (General Buttons) */
-        /* Targets default buttons, sidebar buttons, and buttons in columns */
         div.stButton > button, 
         .stButton button {
-            background-color: #4CAF50 !important; /* Green background */
-            color: white !important; /* White text */
-            border: 1px solid #388E3C !important; /* Darker green border */
+            background-color: #4CAF50 !important; 
+            color: white !important; 
+            border: 1px solid #388E3C !important; 
             border-radius: 5px !important;
             padding: 10px 24px !important;
             transition: 0.3s;
-            width: 100% !important; /* Forces all buttons to fill their column/container */
+            width: 100% !important; 
         }
         
         /* Hover effect (slightly darker green) on all button types */
@@ -408,23 +427,20 @@ def main():
         }
 
         /* --- SPECIFICALLY TARGET THE FORM SUBMIT BUTTON (GREEN) --- */
-        /* Targets the actual button element inside the form submit container */
         button[data-testid="stBaseButton-secondaryFormSubmit"] {
-            /* Override Streamlit's default form submit button style */
             background-color: #4CAF50 !important;
             color: white !important;
             border: 1px solid #388E3C !important;
         }
         
         /* HIDDEN ZEROS IN NUMBER INPUTS */
-        /* Targets the actual input field when its value attribute is "0" */
         div[data-baseweb="input"] input[type="number"][value="0"] {
-            color: transparent !important; /* Hide the '0' by making it transparent */
+            color: transparent !important; 
         }
         
         /* Make the arrows visible even if the number is 0 */
         div[data-baseweb="input"] button {
-             color: #4CAF50 !important; /* Make buttons (arrows) green */
+             color: #4CAF50 !important; 
         }
         
         /* Ensure the form container doesn't reset button width */
@@ -436,7 +452,7 @@ def main():
         """, unsafe_allow_html=True)
     # --- End Custom CSS ---
     
-    st.title("ACC Croquet Tournament Manager (Random, No Draws)")
+    st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
 
     # Initialize state variables
     if 'tournament' not in st.session_state:
@@ -444,26 +460,29 @@ def main():
         st.session_state.tournament_name = "New Tournament"
         st.session_state.players = []
         st.session_state.num_rounds = 3
-        st.session_state.tournament_list_refreshed = False
+        st.session_state.loaded_id = None # Tracks the ID of the currently loaded tournament
 
     # --- Sidebar for Loading Saved Tournaments ---
     with st.sidebar:
         st.header("Load Saved Tournament")
         init_db()
         
-        tournaments_list = load_tournaments_list()
+        # Pass the database modification time to cache the list effectively
+        db_mtime = get_db_mtime()
+        tournaments_list = load_tournaments_list(db_mtime)
         
         display_list = ["--- New Tournament ---"] + [t[1] for t in tournaments_list]
         id_map = {t[1]: t[0] for t in tournaments_list}
         
+        # Determine the correct default index for the selectbox
         default_index = 0
-        current_name = st.session_state.tournament_name
+        current_loaded_id = st.session_state.loaded_id
         
-        for idx, display_name in enumerate(display_list):
-            base_name = display_name.split(' (')[0]
-            if base_name == current_name:
-                default_index = idx
-                break
+        if current_loaded_id is not None:
+            for idx, (t_id, display_name) in enumerate(tournaments_list):
+                if t_id == current_loaded_id:
+                    default_index = idx + 1
+                    break
         
         selected_display = st.selectbox(
             "Select a tournament to load:",
@@ -472,34 +491,36 @@ def main():
             key="load_selectbox"
         )
         
-        # --- Logic for handling the selection ---
         selected_id = id_map.get(selected_display)
         
+        # --- Logic for handling the selection ---
+        
+        # Action: Start New Tournament
         if selected_display == "--- New Tournament ---":
-            if st.session_state.tournament:
+            if st.session_state.tournament and st.session_state.loaded_id is not None:
                 if st.button("Start New Tournament", key="new_tournament_button"):
                     st.session_state.tournament = None
                     st.session_state.tournament_name = "New Tournament"
                     st.session_state.players = []
                     st.session_state.num_rounds = 3
+                    st.session_state.loaded_id = None
                     st.rerun()
-        else:
-            # Load selected tournament if it's different from the current one
-            is_different_selection = (selected_display.split(' (')[0] != st.session_state.tournament_name) or (not st.session_state.tournament)
-            
-            if is_different_selection:
-                load_selected_tournament(selected_id)
-                st.rerun()
+        
+        # Action: Load/Re-load Selected Tournament
+        elif selected_id and selected_id != st.session_state.loaded_id:
+            load_selected_tournament(selected_id)
+            st.rerun()
 
+        # Action: Delete Tournament
+        if selected_id:
             st.markdown("---")
             st.warning("PERMANENT ACTION")
-            
-            # --- DELETE BUTTON ---
             if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button"):
                 if delete_tournament_from_db(selected_id):
-                    st.success(f"Tournament '{selected_display}' deleted.")
+                    st.success(f"Tournament '{selected_display}' deleted. Reloading page...")
                     st.session_state.tournament = None
                     st.session_state.tournament_name = "New Tournament"
+                    st.session_state.loaded_id = None
                     st.rerun()
                 else:
                     st.error("Failed to delete the tournament.")
@@ -517,12 +538,15 @@ def main():
                 if len(st.session_state.players) < 2:
                     st.error("At least 2 players are required!")
                 else:
+                    # Clear old score states from any previous tournament
                     for key in list(st.session_state.keys()):
-                        if key.endswith(("_input")):
+                        if key.startswith(("hoops1_", "hoops2_")) and key.endswith(("_input")):
                             del st.session_state[key]
                             
                     st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
+                    st.session_state.loaded_id = None # Mark as a new, unsaved tournament
                     st.success("Tournament created! All pairings generated. Scroll down to enter results.")
+                    st.rerun() # Rerun to update the page structure
 
     # --- Main Content: Tournament Management ---
     if st.session_state.tournament:
@@ -546,6 +570,7 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
+                    # Initialize Streamlit session state with current DB values
                     if input1_key not in st.session_state:
                         st.session_state[input1_key] = current_hoops1
                     
@@ -578,6 +603,7 @@ def main():
                     
                     with current_match_col:
                         try:
+                            # Use index from score_keys_to_update to reliably find the keys
                             match_info = next((r, m, k1, k2) 
                                              for r, m, k1, k2 in score_keys_to_update 
                                              if r == round_num and m == round_pairings.index(match))
@@ -596,6 +622,7 @@ def main():
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_h1:
+                            # Input component automatically updates session state
                             number_input_simple(key=hoops1_key)
                         
                         with col_h2:
@@ -611,7 +638,6 @@ def main():
                             live_hoops1 = st.session_state.get(input1_key, 0)
                             live_hoops2 = st.session_state.get(input2_key, 0)
 
-                            # Display logic: show blank if both are 0
                             if live_hoops1 == 0 and live_hoops2 == 0:
                                 status_text = " - " 
                                 status_delta = " "
@@ -634,7 +660,6 @@ def main():
         # --- The Submission Form ---
         with st.form("results_submission_form"):
             st.markdown("---")
-            # This is the form button that is now targeted by the specific CSS
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
@@ -672,17 +697,16 @@ def main():
         # --- Save and Export ---
         st.subheader("Save and Export")
         
-        # Changed column layout to 1:1:1 implicit columns
         col_save, col_export1, col_export2 = st.columns(3)
 
         with col_save:
-            # Renamed the button
             if st.button("Save Tournament", key="save_button"):
                 conn = init_db()
                 save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
                 st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
-                st.session_state.tournament_list_refreshed = True 
+                # The st.cache_data.clear() call in save_to_db ensures other sessions will reload the list.
+                # Rerunning here reloads the list for the current session and updates the sidebar selection state.
                 st.rerun()
 
         with col_export1:
