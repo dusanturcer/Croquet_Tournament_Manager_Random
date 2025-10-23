@@ -455,12 +455,10 @@ def load_selected_tournament(selected_id):
             st.session_state.tournament = None
             st.session_state.loaded_id = None
 
-# FIX: New callback function to set the flag and trigger the main script's rerun
+# Callback function to set the flag and trigger the main script's rerun
 def handle_lock_change():
     """Sets a flag to force a full rerun from the main script body."""
-    # The radio button change already updates st.session_state.is_locked
     st.session_state._lock_changed = True
-    # The immediate st.rerun() here is a no-op, but the flag will trigger one immediately after the callback returns.
 
 
 def main():
@@ -537,13 +535,19 @@ def main():
     if '_lock_changed' not in st.session_state:
         st.session_state._lock_changed = False
         
-    # FIX: Check the flag here in the main script body
-    if st.session_state._lock_changed:
-        st.session_state._lock_changed = False  # Reset flag
-        st.rerun()  # Force the full rerun to apply the disabled state
-
     # Convert radio button selection to boolean for logic
     is_locked_bool = (st.session_state.is_locked == "Locked")
+        
+    # FIX: Check the flag and show toast here in the main script body
+    if st.session_state._lock_changed:
+        st.session_state._lock_changed = False  # Reset flag
+        
+        if is_locked_bool:
+            st.toast("🔒 Tournament Input is Locked", icon="🚫")
+        else:
+            st.toast("🔓 Tournament Input is Unlocked", icon="✅")
+            
+        st.rerun()  # Force the full rerun to apply the disabled state
 
     # --- Sidebar for Loading Saved Tournaments and LOCK BUTTON ---
     with st.sidebar:
