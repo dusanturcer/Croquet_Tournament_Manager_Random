@@ -90,7 +90,6 @@ class SwissTournament:
         used_players = set()
         
         # Reset opponents set for the purpose of THIS pairing algorithm iteration
-        # This is a key step in Swiss system pairing
         temp_players = available_players.copy()
         
         for i in range(len(temp_players)):
@@ -113,7 +112,6 @@ class SwissTournament:
                     p2 = temp_players[j]
                     if p2.id not in used_players:
                         best_p2 = p2
-                        # st.warning(f"Forced re-match between {p1.name} and {p2.name} in round {round_num + 1}")
                         break
             
             if best_p2:
@@ -146,8 +144,6 @@ class SwissTournament:
         
         self.rounds[round_num] = round_pairings
         
-        # if len(used_players) != len(self.players):
-        #      st.warning(f"Warning: Only {len(used_players)}/{len(self.players)} players paired in round {round_num + 1}.")
 
     def record_result(self, round_num, match_num, hoops1, hoops2):
         if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num]):
@@ -310,24 +306,18 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     player_map = {}
     for p_id, name, points, wins, hs, hc in player_data:
         player = Player(p_id, name)
-        player.points = points
-        player.wins = wins
-        player.hoops_scored = hs
-        player.hoops_conceded = hc
+        player.points = 0 # Points/stats must be calculated from matches, not loaded directly
+        player.wins = 0 
+        player.hoops_scored = 0 
+        player.hoops_conceded = 0
         player_map[p_id] = player
         
     players_list = list(player_map.values())
 
     num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
-    # num_rounds is the maximum scheduled rounds from the player setup, NOT the max round number in the matches table
-    # We must retrieve the initial `num_rounds` from player setup or rely on session state after loading.
-    # For simplicity during loading, we'll ensure the tournament object is created with at least 
-    # the maximum round number + 1, and the correct `num_rounds` will be stored in session state.
     max_round_in_db = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
     
-    # Initialize tournament with max rounds seen in DB or default to 3
     tournament = SwissTournament(players_list, max(max_round_in_db, 3))
-    # Explicitly set rounds list size based on loaded data
     tournament.rounds = [[] for _ in range(max_round_in_db)] 
     
     c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ? ORDER BY round_num, match_num", (tournament_id,))
@@ -339,14 +329,24 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         
         if p1 is None: continue
 
-        # Restore opponents set, required for generating future rounds
+        # Restore opponents set
         if p2 is not None:
             p1.add_opponent(p2_id)
             p2.add_opponent(p1_id)
 
         match = Match(p1, p2)
-        match.result = (h1, h2)
         
+        # Apply scores to match object and stats (using temporary Match object's logic)
+        temp_match = Match(p1, p2)
+        temp_match.set_result(h1, h2)
+        match.result = temp_match.result
+        
+        # Apply BYE rule (1 point, 26-0 differential)
+        if p2 is None and h1 == 0 and h2 == 0:
+            p1.points += 1 # 1 point for the BYE
+            p1.hoops_scored += 26
+        
+
         # Ensure the round list is large enough
         while len(tournament.rounds) <= r_num:
             tournament.rounds.append([])
@@ -355,30 +355,9 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
              tournament.rounds[r_num].extend([None] * (m_num - len(tournament.rounds[r_num]) + 1))
         
         tournament.rounds[r_num][m_num] = match
-        
-        # Re-apply match result to correctly set points/hoops.
-        # This is a cleaner way to restore state than relying only on the DB save columns.
-        if p2 is not None:
-             p1.hoops_scored += h1
-             p1.hoops_conceded += h2
-             p2.hoops_scored += h2
-             p2.hoops_conceded += h1
-             
-             if h1 > h2:
-                 p1.points += 1
-                 p1.wins += 1
-             elif h2 > h1:
-                 p2.points += 1
-                 p2.wins += 1
 
     conn.close()
     
-    # The actual scheduled number of rounds is lost in the DB. We'll use the 
-    # max round number found in the DB as the temporary scheduled number, 
-    # or rely on the fact that if it was saved, the original `num_rounds` 
-    # was likely in the session state already. For now, we return `max_round_in_db`.
-    # When a loaded tournament is saved, the current session state `num_rounds`
-    # will be used for the next session.
     return tournament, tournament_name, max_round_in_db
 
 # --- Export Functions ---
@@ -472,7 +451,6 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label="", disabl
     if text_key not in st.session_state or st.session_state[text_key] == "":
         display_value = "" if current_value_int == 0 else str(current_value_int)
     else:
-        # Check if the text input is still valid (allows temporary invalid input)
         try:
             test_int = int(st.session_state[text_key])
             if test_int == current_value_int:
@@ -487,7 +465,7 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label="", disabl
         label,
         value=display_value,
         max_chars=2, 
-        key=text_key, # This key stores the raw string input (must be a string)
+        key=text_key, 
         help="Enter score. Max 26.",
         disabled=disabled,
         on_change=lambda: _update_session_state_to_int(text_key, result_key, min_value, max_value)
@@ -510,14 +488,12 @@ def load_selected_tournament(selected_id):
             st.session_state.tournament = tournament
             st.session_state.tournament_name = tournament_name
             
-            # Use the number of rounds defined in the state if it was already set, 
-            # otherwise use the loaded value.
             if 'num_rounds' not in st.session_state or st.session_state.num_rounds < num_rounds_loaded:
                  st.session_state.num_rounds = num_rounds_loaded
-                 tournament.num_rounds = num_rounds_loaded # Ensure the tournament object also reflects the loaded count
+                 tournament.num_rounds = num_rounds_loaded 
                  
             st.session_state.players = [p.name for p in tournament.players]
-            st.session_state.loaded_id = selected_id # Store the ID of the currently loaded tournament
+            st.session_state.loaded_id = selected_id 
             st.success(f"Tournament '{tournament_name}' loaded successfully.")
             
         except Exception as e:
@@ -694,7 +670,10 @@ def main():
                 else:
                     st.error("Failed to delete the tournament.")
 
-    # --- Main Content: Tournament Setup (Disabled if Locked) ---
+    # ----------------------------------------------------------------------
+    # --- Main Content: Tournament Setup ---
+    # ----------------------------------------------------------------------
+    
     if not st.session_state.tournament or not st.session_state.players:
         expander_state = True
     else:
@@ -702,7 +681,6 @@ def main():
         
     with st.expander("Create/Setup Tournament", expanded=expander_state):
         with st.form("tournament_form_setup"):
-            # DISABLE SETUP INPUTS IF LOCKED
             st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name, disabled=is_locked_bool)
             player_input = st.text_area("Enter player names (one per line)", "\n".join(st.session_state.players), disabled=is_locked_bool)
             st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds, step=1, disabled=is_locked_bool)
@@ -713,18 +691,20 @@ def main():
                 if len(st.session_state.players) < 2:
                     st.error("At least 2 players are required!")
                 else:
-                    # Clear old score states from any previous tournament
                     for key in list(st.session_state.keys()):
                         if key.startswith(("hoops1_", "hoops2_")):
                             if key in st.session_state:
                                 del st.session_state[key]
                             
                     st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
-                    st.session_state.loaded_id = None # Mark as a new, unsaved tournament
+                    st.session_state.loaded_id = None 
                     st.success(f"Tournament '{st.session_state.tournament_name}' created! Pairings for Round 1 generated. Scroll down to enter results.")
-                    st.rerun() # Rerun to update the page structure
+                    st.rerun() 
 
+    # ----------------------------------------------------------------------
     # --- Main Content: Tournament Management ---
+    # ----------------------------------------------------------------------
+    
     if st.session_state.tournament:
         tournament = st.session_state.tournament
         
@@ -735,8 +715,7 @@ def main():
         
         score_keys_to_update = [] 
         
-        # Pre-process all keys and initialize session state before the form runs
-        for round_num in range(len(tournament.rounds)): # Iterate over generated rounds only
+        for round_num in range(len(tournament.rounds)):
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
                 if match and match.player2 is not None:
@@ -748,7 +727,6 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
-                    # Initialize Streamlit session state with current DB values (as integers)
                     if result1_key not in st.session_state:
                         st.session_state[result1_key] = current_hoops1
                     
@@ -757,23 +735,19 @@ def main():
                         
                     score_keys_to_update.append((round_num, match_num, hoops1_key_root, hoops2_key_root))
 
-        # RENDER INPUTS (OUTSIDE THE FORM)
+        # RENDER INPUTS
         for round_num in range(len(tournament.rounds)):
             round_pairings = tournament.get_round_pairings(round_num)
-            
             non_bye_matches = [match for match in round_pairings if match and match.player2 is not None]
             
             if not non_bye_matches:
-                if round_num == 0 and len(tournament.players) > 0 and len(tournament.rounds) > 0 and len(tournament.rounds[0]) == 0:
+                if round_num == 0 and len(tournament.players) > 0:
                      st.warning("No pairings were generated for Round 1. Please check player count or restart.")
                 continue
             
-            # Completion check based on non-bye matches having a score entered
             is_round_complete = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
 
             round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
-            
-            # Expanded logic: expand the latest, incomplete round
             expanded_state = not is_round_complete and (round_num == len(tournament.rounds) - 1)
 
             with st.expander(round_label, expanded=expanded_state):
@@ -787,13 +761,11 @@ def main():
                         
                     current_match_col = match_col1 if match_display_num % 2 != 0 else match_col2
                     
-                    # Find the corresponding keys in score_keys_to_update
                     match_info = next(((r, m, k1, k2) 
                                        for r, m, k1, k2 in score_keys_to_update 
                                        if r == round_num and m == round_pairings.index(match)), None)
                     
                     if match_info is None:
-                        # Should not happen if pre-processing was correct
                         continue
 
                     hoops1_key_root = match_info[2]
@@ -838,7 +810,7 @@ def main():
                         current_match_col.markdown("---")
                         match_display_num += 1
                         
-                # Display BYE player if any
+                # Display BYE player
                 bye_match = next((match for match in round_pairings if match and match.player2 is None), None)
                 if bye_match:
                     st.info(f"**BYE Player:** {bye_match.player1.name} (Awarded 1 point and 26-0 score for tie-breaking)")
@@ -854,53 +826,47 @@ def main():
             submitted = st.form_submit_button("💾 Update Standings & Save to DB", disabled=is_form_disabled)
             
             if submitted and not is_form_disabled:
-                # 1. Update the tournament object with scores from session state
+                
                 match_updates_made = False
                 
-                # Reset all points/hoops before applying new results
+                # Reset all stats
                 for p in tournament.players:
                     p.points = p.wins = p.hoops_scored = p.hoops_conceded = 0
                 
-                # Re-apply all match results to ensure points are correct
+                # Re-apply all match results from session state to tournament object
                 for r_num, round_pairings in enumerate(tournament.rounds):
                     for m_num, match in enumerate(round_pairings):
                         if match is None: continue
                         
-                        hoops1, hoops2 = match.get_scores() # Current score in the match object
+                        hoops1, hoops2 = match.get_scores()
                         
-                        # Check session state for updated score only if it was a non-bye match
                         if match.player2 is not None:
                             try:
-                                # Find the keys used for this match
                                 match_info = next(((r, m, k1, k2) for r, m, k1, k2 in score_keys_to_update if r == r_num and m == m_num))
                                 k1_root, k2_root = match_info[2], match_info[3]
                                 
                                 live_hoops1 = st.session_state.get(f"{k1_root}_result", 0)
                                 live_hoops2 = st.session_state.get(f"{k2_root}_result", 0)
                                 
-                                # If the session state has a newer score, use it and mark for saving
                                 if (live_hoops1, live_hoops2) != (hoops1, hoops2):
                                     hoops1, hoops2 = live_hoops1, live_hoops2
                                     match_updates_made = True
                                 
                             except StopIteration:
-                                pass # This match was likely generated but not in the score_keys_to_update list (i.e. if a round was just generated)
+                                pass 
                         
-                        # Apply scores. This handles points, wins, and hoop stats.
-                        # Note: This is an internal call to Match.set_result which does NOT update opponents.
-                        # We use a temporary match to apply scores without changing opponent history
                         temp_match = Match(match.player1, match.player2) 
                         temp_match.set_result(hoops1, hoops2) 
                         match.result = temp_match.result
                         
-                        # Apply BYE rule: 1 point, 26-0 hoop differential for tie-breaker
+                        # Apply BYE rule
                         if match.player2 is None and hoops1 == 0 and hoops2 == 0:
-                            match.player1.points += 1 # 1 point for the BYE
+                            match.player1.points += 1 
                             match.player1.hoops_scored += 26
                             match_updates_made = True
 
 
-                # 2. Save the updated tournament to the database
+                # Save the updated tournament to the database
                 conn = init_db()
                 tournament_id = save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
@@ -909,13 +875,12 @@ def main():
                     st.session_state.loaded_id = tournament_id
                     st.success("Results updated and tournament saved successfully!")
                     
-                    # If matches were updated, rerun to refresh standings and inputs
                     if match_updates_made:
                         st.rerun()
 
         st.markdown("---")
         
-        # --- Standings Display ---
+        # --- Standings Display (YELLOW HIGHLIGHTING REMOVED) ---
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         
@@ -933,44 +898,35 @@ def main():
         
         standings_df = pd.DataFrame(data)
         
-        # Style the DataFrame to highlight the top three
-        def highlight_top3(s):
-            is_top3 = s.index < 3
-            return ['background-color: #ffd70030' if v else '' for v in is_top3] # Light Gold background
-        
+        # The .style.apply(highlight_top3...) call is removed.
         st.dataframe(
-            standings_df.style.apply(highlight_top3, subset=['Rank', 'Player', 'Points', 'Wins', 'Hoop Diff']),
+            standings_df,
             hide_index=True,
             use_container_width=True
         )
 
         st.markdown("---")
 
-        # --- Next Round Logic (Corrected) ---
+        # --- Next Round Logic ---
         current_generated_rounds = len(tournament.rounds)
         total_scheduled_rounds = tournament.num_rounds
         
-        # 1. Check if the LAST GENERATED round is complete
         last_generated_round_num = current_generated_rounds - 1 
         all_matches_completed = False
         
         if last_generated_round_num >= 0:
             last_round_pairings = tournament.get_round_pairings(last_generated_round_num)
-            # Check only non-bye matches
             non_bye_matches = [match for match in last_round_pairings if match and match.player2 is not None]
-            
-            # A round is considered complete if ALL non-bye matches have non-zero scores
-            all_matches_completed = all(sum(match.get_scores()) > 0 for match in non_bye_matches)
+            all_matches_completed = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
         else:
-            # If current_generated_rounds is 0 (i.e., Round 1 hasn't been generated yet during setup), allow generation
             all_matches_completed = True 
         
-        # --- FINAL TOURNAMENT COMPLETION CHECK ---
+        # FINAL TOURNAMENT COMPLETION CHECK
         if current_generated_rounds == total_scheduled_rounds and all_matches_completed:
-            st.balloons() # Add celebratory balloons!
+            st.balloons()
             st.success(f"✅ Tournament Complete! All {total_scheduled_rounds} scheduled rounds have been played.")
         
-        # --- INTERMEDIATE ROUND GENERATION CHECK ---
+        # INTERMEDIATE ROUND GENERATION CHECK
         elif current_generated_rounds < total_scheduled_rounds:
             
             round_to_generate = current_generated_rounds + 1
@@ -978,17 +934,13 @@ def main():
             
             if all_matches_completed:
                 if current_generated_rounds > 0:
-                     # Message for completed intermediate round
                      st.success(f"Round {current_generated_rounds} results are complete! Ready to generate pairings for Round {round_to_generate}.")
                 
-                # Button label shows the round number
                 if st.button(f"Generate Pairings for Round {round_to_generate}", key="generate_next_round", disabled=is_locked_bool):
-                    # Generate the next round pairings
                     tournament.generate_round_pairings(current_generated_rounds, initial=(current_generated_rounds == 0))
                     st.success(f"Pairings for Round {round_to_generate} generated successfully. Please scroll up to enter scores.")
                     st.rerun()
             else:
-                # Message when the previous round is not yet complete
                 st.warning(f"Results for Round {current_generated_rounds} must be entered and saved before generating Round {round_to_generate}.")
         
         st.markdown("---")
@@ -997,7 +949,6 @@ def main():
         st.subheader("Export Data")
         export_col1, export_col2 = st.columns(2)
         
-        # Export CSV
         csv_filename = export_to_csv(tournament, st.session_state.tournament_name)
         if csv_filename:
             with open(csv_filename, "r", newline="") as f:
@@ -1010,7 +961,6 @@ def main():
                 key="download_csv"
             )
 
-        # Export Excel
         excel_filename = export_to_excel(tournament, st.session_state.tournament_name)
         if excel_filename:
             with open(excel_filename, "rb") as f:
