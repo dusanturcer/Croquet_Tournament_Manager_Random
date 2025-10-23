@@ -7,8 +7,8 @@ import csv
 import os
 from datetime import datetime
 
-# --- Player and Match Classes (Omitted for brevity, assume they are correct) ---
-# ... [Classes Player, Match, SwissTournament are here] ...
+# --- Player and Match Classes ---
+
 class Player:
     def __init__(self, id, name):
         self.id = id
@@ -21,7 +21,11 @@ class Player:
 
     def add_opponent(self, opponent_id):
         self.opponents.add(opponent_id)
-# ...
+
+    def __repr__(self):
+        return (f"Player(id={self.id}, name={self.name}, points={self.points}, "
+                f"wins={self.wins}, hoops_scored={self.hoops_scored}, "
+                f"hoops_conceded={self.hoops_conceded})")
 
 class Match:
     def __init__(self, player1, player2):
@@ -52,7 +56,8 @@ class Match:
 
     def get_scores(self):
         return self.result if self.result else (0, 0)
-# ...
+
+# --- Swiss Tournament Logic ---
 
 class SwissTournament:
     def __init__(self, players, num_rounds):
@@ -97,8 +102,12 @@ class SwissTournament:
                 p1.add_opponent(best_p2.id)
                 best_p2.add_opponent(p1.id)
 
+            # NOTE: Removed a block that handled remaining players inside the loop
+            # to rely solely on the block below for better consistency.
+            
         remaining_players = [p for p in available_players if p.id not in used_players]
         if remaining_players:
+            # Simple version: the highest-ranked remaining player gets the bye
             bye_player = remaining_players[0]
             round_pairings.append(Match(bye_player, None))
 
@@ -114,8 +123,10 @@ class SwissTournament:
             p1, p2 = match.player1, match.player2
             old_hoops1, old_hoops2 = match.get_scores()
 
+            # Reset previous results
             if match.result is not None:
                 if p2 is None:
+                    # BYE: No points to reset
                     pass
                 else:
                     p1.hoops_scored -= old_hoops1
@@ -130,21 +141,26 @@ class SwissTournament:
                         p2.wins -= 1
                         p2.points -= 1
 
+            # Set new results (Match.set_result handles updating player stats)
             match.set_result(hoops1, hoops2)
 
+            # Re-pair the next round, as standings have changed
             if round_num + 1 < self.num_rounds:
                  self.generate_round_pairings(round_num + 1)
         else:
             st.error(f"Invalid round_num {round_num} or match_num {match_num}")
 
     def get_standings(self):
+        # Tie-breakers: 1. Points (Wins), 2. Net Hoops, 3. Hoops Scored
         return sorted(self.players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
 
     def get_round_pairings(self, round_num):
         if 0 <= round_num < len(self.rounds):
             return self.rounds[round_num]
         return []
-# ... [Database and Export functions are here] ...
+
+# --- Database Functions ---
+
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
@@ -185,6 +201,8 @@ def save_to_db(tournament, tournament_name, conn):
     except sqlite3.Error as e:
         st.error(f"Database error on save: {e}")
         conn.rollback()
+
+# --- Export Functions ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -228,7 +246,7 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Callback Functions (NEW) ---
+# --- Callback Functions ---
 
 def decrement_score(key, step, min_value):
     """Callback to safely decrement score in session state."""
@@ -245,47 +263,42 @@ def increment_score(key, step, max_value):
 
 # --- Streamlit UI and Logic ---
 
-# Custom number input with + and - buttons (UPDATED)
+# Custom number input with + and - buttons
 def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
     temp_key = f"{key}_temp"
 
-    # Initialize session state for this key
     if temp_key not in st.session_state:
         st.session_state[temp_key] = int(value)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
-        # Use on_click callback instead of st.experimental_rerun()
         st.button(
             "−", 
             key=f"minus_{key}",
             on_click=decrement_score, 
-            args=(key, step, min_value) # Pass arguments to the callback
+            args=(key, step, min_value)
         ) 
 
     with col2:
-        # The st.number_input handles its own internal re-run/state update
         st.session_state[temp_key] = st.number_input(
             label,
             min_value=min_value,
             max_value=max_value,
-            value=st.session_state[temp_key], # Use the session state value
+            value=st.session_state[temp_key],
             step=step,
             format="%d",
-            key=f"{key}_input" # Unique key for number_input
+            key=f"{key}_input"
         )
         
     with col3:
-        # Use on_click callback instead of st.experimental_rerun()
         st.button(
             "+", 
             key=f"plus_{key}",
             on_click=increment_score, 
-            args=(key, step, max_value) # Pass arguments to the callback
+            args=(key, step, max_value)
         )
     
-    # Return the current session state value
     return int(st.session_state[temp_key])
 
 
@@ -293,14 +306,13 @@ def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     st.title("Croquet Tournament Manager 🏏 (BYE=0 Points, No Draws)")
 
-    # Initialize session state
     if 'tournament' not in st.session_state:
         st.session_state.tournament = None
         st.session_state.tournament_name = "New Tournament"
         st.session_state.players = []
         st.session_state.num_rounds = 3
 
-    # --- Tournament Setup (Unchanged) ---
+    # --- Tournament Setup ---
     with st.expander("Create/Setup Tournament", expanded=not st.session_state.tournament):
         with st.form("tournament_form"):
             st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name)
@@ -381,7 +393,7 @@ def main():
                         st.metric(label="Current Score", value="Not Recorded")
 
 
-        # --- The Submission Form (Unchanged) ---
+        # --- The Submission Form ---
         with st.form("results_submission_form"):
             st.markdown("---")
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
@@ -397,15 +409,15 @@ def main():
                     hoops1 = st.session_state.get(hoops1_key, 0)
                     hoops2 = st.session_state.get(hoops2_key, 0)
                     
-                    if hoops1 == hoops2:
+                    if hoops1 == hoops2 and match.player2 is not None:
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
                         
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
                     
                 st.success("All results updated! Standings and subsequent round pairings recalculated.")
-                st.experimental_rerun() 
+                # st.experimental_rerun() <-- THIS LINE WAS REMOVED TO FIX THE ATTRIBUTEERROR
 
-        # --- Standings (Unchanged) ---
+        # --- Standings ---
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         standings_data = [{
@@ -417,7 +429,7 @@ def main():
         } for i, p in enumerate(standings)]
         st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
 
-        # --- Save and Export (Unchanged) ---
+        # --- Save and Export ---
         st.subheader("Save and Export")
         
         col_save, col_export1, col_export2 = st.columns(3)
