@@ -109,7 +109,7 @@ class SwissTournament:
              st.warning(f"Warning: Only {len(used_players) + len(remaining_players)}/{len(self.players)} players paired in round {round_num + 1} due to opponent restrictions.")
 
     def record_result(self, round_num, match_num, hoops1, hoops2):
-        if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num]):
+        if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[match_num]):
             match = self.rounds[round_num][match_num]
             
             p1, p2 = match.player1, match.player2
@@ -140,7 +140,9 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
+# ----------------------------------------------------------------------
 # --- Database & Export Functions (Unchanged) ---
+# ----------------------------------------------------------------------
 
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
@@ -229,9 +231,11 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Streamlit UI and Logic ---
+# ----------------------------------------------------------------------
+# --- Streamlit UI and Logic (Modified for compact display) ---
+# ----------------------------------------------------------------------
 
-# FIX: Simplified score input function
+# Simplified score input function (No buttons)
 def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
@@ -289,12 +293,11 @@ def main():
         
         score_keys_to_update = [] 
         
-        # 1. Synchronization and Key Generation Block (Decoupled from Display)
+        # 1. Synchronization and Key Generation Block
         for round_num in range(tournament.num_rounds):
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
                 if match.player2 is not None:
-                    # Use the match_num from the pairings list, which is unique
                     hoops1_key = f"hoops1_r{round_num}_m{match_num}"
                     hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                     input1_key = f"{hoops1_key}_input"
@@ -302,7 +305,6 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
-                    # Prevent scores from reverting to zero after manual entry
                     if input1_key not in st.session_state or st.session_state.get(input1_key, 0) == current_hoops1:
                         st.session_state[input1_key] = current_hoops1
                     
@@ -332,26 +334,29 @@ def main():
                 # Use a counter for display numbering
                 match_display_num = 1
                 
-                # Iterate through the non-BYE matches only
+                # Iterate through the full round pairings list to maintain match_num index
                 for i, match in enumerate(round_pairings):
                     if match.player2 is None:
                         continue 
                         
-                    # Determine which column to place the match in
-                    current_match_col = match_col1 if i % 2 == 0 else match_col2
+                    # Determine which column to place the match in. Use match_display_num for clean alternation.
+                    current_match_col = match_col1 if match_display_num % 2 != 0 else match_col2
                     
                     with current_match_col:
-                        # Find the original match_num to reconstruct the correct keys
-                        # Note: This is safe because we use the full match list index `match_num` from score_keys_to_update
-                        # even though we are looping over the non-BYE matches now.
-                        match_info = next(info for r, m, k1, k2 in score_keys_to_update if r == round_num and m == round_pairings.index(match))
-                        
-                        # Reconstruct the keys using the original match_num
+                        # FIX: Corrected generator expression to yield the full tuple (r, m, k1, k2)
+                        try:
+                            match_info = next((r, m, k1, k2) 
+                                             for r, m, k1, k2 in score_keys_to_update 
+                                             if r == round_num and m == round_pairings.index(match))
+                        except StopIteration:
+                            # This should not happen if synchronization is correct, but safe check
+                            continue
+
+                        # Unpack the correct key roots
                         hoops1_key = match_info[2]
                         hoops2_key = match_info[3]
                         
                         # Layout: Match # | P1 Name | P1 Input | P2 Input | P2 Name | Status
-                        # Adjusted column widths for better spacing without buttons
                         col_num, col_p1, col_h1, col_h2, col_p2, col_status = st.columns([0.5, 2, 1, 1, 2, 1.5])
                         
                         with col_num:
