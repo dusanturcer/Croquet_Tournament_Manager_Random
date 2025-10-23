@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from collections import Counter
 
-# --- Player and Match Classes ---
+# --- Player and Match Classes (Unchanged) ---
 
 class Player:
     def __init__(self, id, name):
@@ -56,26 +56,14 @@ class Match:
 
 class SwissTournament:
     def __init__(self, players_names_or_objects, num_rounds):
-        
-        # Determine if we are creating a new tournament (list of strings) or loading one (list of Player objects)
-        is_new_tournament = all(isinstance(p, str) for p in players_names_or_objects)
-        
-        if is_new_tournament:
+        if all(isinstance(p, str) for p in players_names_or_objects):
             self.players = [Player(i, name) for i, name in enumerate(players_names_or_objects)]
             self.rounds = []
-            # ONLY GENERATE ROUNDS AUTOMATICALLY FOR A NEW TOURNAMENT
             for round_num in range(num_rounds):
                 initial = (round_num == 0)
                 self.generate_round_pairings(round_num, initial=initial) 
         else:
-            # FIX: Sanitize the incoming player list immediately upon loading
-            original_len = len(players_names_or_objects)
-            self.players = [p for p in players_names_or_objects if isinstance(p, Player)]
-            
-            # Report if data was lost on load
-            if len(self.players) < original_len:
-                 st.error(f"FATAL CORRUPTION DETECTED on load: Removed {original_len - len(self.players)} corrupt objects from tournament player list.")
-                 
+            self.players = players_names_or_objects
             self.rounds = [] 
             
         self.num_rounds = num_rounds
@@ -91,8 +79,7 @@ class SwissTournament:
             available_players = self.players.copy()
             random.shuffle(available_players) 
         else:
-            # Use the robust get_standings which filters out corrupt objects
-            available_players = self.get_standings() 
+            available_players = self.get_standings()
         
         used_players = set()
         
@@ -150,39 +137,15 @@ class SwissTournament:
             match.set_result(hoops1, hoops2)
 
     def get_standings(self):
-        # FIX: Filter out any non-Player objects before attempting to sort.
-        clean_players = [p for p in self.players if isinstance(p, Player)]
-
-        # Permanently remove the corrupted data from the tournament's main player list
-        if len(clean_players) < len(self.players):
-             st.warning(f"Sanitizing player list: Removed {len(self.players) - len(clean_players)} non-player objects.")
-             self.players = clean_players 
-        
-        # Return the sorted, clean list
-        return sorted(clean_players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
-
+        return sorted(self.players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
 
     def get_round_pairings(self, round_num):
         if 0 <= round_num < len(self.rounds):
             return self.rounds[round_num]
         return []
 
-    def get_games_played(self, player_id):
-        count = 0
-        for round_pairings in self.rounds:
-            for match in round_pairings:
-                # Only count matches that have a result recorded
-                if match and match.result is not None:
-                    # Check if the player was player 1 and it wasn't a BYE
-                    if match.player1 and match.player1.id == player_id and match.player2 is not None:
-                        count += 1
-                    # Check if the player was player 2
-                    elif match.player2 and match.player2.id == player_id:
-                        count += 1
-        return count
-
 # ----------------------------------------------------------------------
-# --- Database Functions ---
+# --- Database Functions (Unchanged) ---
 # ----------------------------------------------------------------------
 
 DB_PATH = 'tournament.db'
@@ -230,10 +193,7 @@ def save_to_db(tournament, tournament_name, conn):
             c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
             tournament_id = c.lastrowid
 
-        # Use the clean list from get_standings to ensure only valid Player objects are saved
-        valid_players = tournament.get_standings()
-        
-        player_data = [(tournament_id, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in valid_players]
+        player_data = [(tournament_id, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in tournament.players]
         c.executemany("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)", player_data)
 
         match_data = []
@@ -305,10 +265,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     c = conn.cursor()
 
     c.execute("SELECT name FROM tournaments WHERE id = ?", (tournament_id,))
-    tournament_name_data = c.fetchone()
-    if not tournament_name_data:
-         raise ValueError(f"Tournament with ID {tournament_id} not found.")
-    tournament_name = tournament_name_data[0]
+    tournament_name = c.fetchone()[0]
 
     c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id = ? ORDER BY player_id", (tournament_id,))
     player_data = c.fetchall()
@@ -323,41 +280,22 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         player_map[p_id] = player
         
     players_list = list(player_map.values())
-    if not players_list:
-        raise ValueError("Tournament loaded but contains no players.")
 
-    # Get round and match data
+    num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
+    num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
+    
+    # Create the tournament object with the correct list size for rounds
+    tournament = SwissTournament(players_list, num_rounds)
+    tournament.rounds = [[] for _ in range(num_rounds)] 
+    
     c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ? ORDER BY round_num, match_num", (tournament_id,))
     match_data = c.fetchall()
 
-    # Determine maximum round and max matches per round
-    max_round_num = -1
-    max_match_num_by_round = {}
-    
-    for r_num, m_num, _, _, _, _ in match_data:
-        max_round_num = max(max_round_num, r_num)
-        max_match_num_by_round[r_num] = max(max_match_num_by_round.get(r_num, -1), m_num)
-
-    num_rounds = max_round_num + 1 if max_round_num >= 0 else 1
-    
-    # Create the tournament object with the correct list size for rounds. 
-    # The SwissTournament __init__ will now sanitize the players_list again.
-    tournament = SwissTournament(players_list, num_rounds) 
-    
-    # Initialize tournament.rounds with empty lists of the correct size, filled with None
-    tournament.rounds = []
-    for r_num in range(num_rounds):
-        num_matches = max_match_num_by_round.get(r_num, -1) + 1
-        tournament.rounds.append([None] * num_matches)
-    
-    # Populate matches safely
     for r_num, m_num, p1_id, p2_id, h1, h2 in match_data:
         p1 = player_map.get(p1_id)
         p2 = player_map.get(p2_id) if p2_id != -1 else None
         
-        if p1 is None: 
-            st.warning(f"Skipping match in round {r_num+1} due to missing player1 (ID: {p1_id}).")
-            continue
+        if p1 is None: continue
 
         # Restore opponents set, required for generating future rounds
         if p2 is not None:
@@ -367,11 +305,14 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         match = Match(p1, p2)
         match.result = (h1, h2)
         
-        # This assignment is now guaranteed to be safe because the lists were pre-sized.
-        if r_num < len(tournament.rounds) and m_num < len(tournament.rounds[r_num]):
-             tournament.rounds[r_num][m_num] = match
-        else:
-            st.error(f"Logic Error: Match {m_num} in Round {r_num} exceeded pre-allocated size.")
+        # Ensure the round list is large enough
+        while len(tournament.rounds) <= r_num:
+            tournament.rounds.append([])
+            
+        if len(tournament.rounds[r_num]) <= m_num:
+             tournament.rounds[r_num].extend([None] * (m_num - len(tournament.rounds[r_num]) + 1))
+        
+        tournament.rounds[r_num][m_num] = match
 
     conn.close()
     return tournament, tournament_name, num_rounds
@@ -505,21 +446,14 @@ def load_selected_tournament(selected_id):
             st.session_state.tournament = tournament
             st.session_state.tournament_name = tournament_name
             st.session_state.num_rounds = num_rounds
-            # FIX: Ensure players list in session state is clean after load
-            st.session_state.players = [p.name for p in tournament.players] 
+            st.session_state.players = [p.name for p in tournament.players]
             st.session_state.loaded_id = selected_id # Store the ID of the currently loaded tournament
             st.success(f"Tournament '{tournament_name}' loaded successfully.")
             
         except Exception as e:
-            # FIX: Reset ALL tournament state on failure and force a rerun to the setup screen
-            st.error(f"Error loading tournament data: {e}. Resetting to 'New Tournament'.")
+            st.error(f"Error loading tournament data: {e}")
             st.session_state.tournament = None
-            st.session_state.tournament_name = "New Tournament"
-            st.session_state.players = []
-            st.session_state.num_rounds = 3
             st.session_state.loaded_id = None
-            # Force rerun to show the setup screen and prevent further execution with corrupted state
-            st.rerun() 
 
 # Callback function to set the flag and trigger the main script's rerun
 def handle_lock_change():
@@ -676,8 +610,7 @@ def main():
         # Action: Load/Re-load Selected Tournament
         elif selected_id and selected_id != st.session_state.loaded_id:
             load_selected_tournament(selected_id)
-            # Rerunning is handled inside load_selected_tournament on success/failure
-            pass
+            st.rerun()
 
         # Action: Delete Tournament
         if selected_id:
@@ -848,9 +781,7 @@ def main():
             
             if results_submitted:
                 
-                # Reset all player stats before reapplying scores.
-                # This loop is safe because the get_standings logic (called just before this submission, on the previous rerun) 
-                # has already sanitized the players list in the session state.
+                # Reset all player stats before reapplying scores
                 for p in tournament.players:
                     p.points = 0
                     p.wins = 0
@@ -859,7 +790,6 @@ def main():
                 
                 # Reapply results using the values from the new result_key in session state
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
-                    # Defensive check for None/corruption on the match itself
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
                     if match is None or match.player2 is None: continue
@@ -911,60 +841,18 @@ def main():
 
 
         # --------------------------------------------------------------------
-        # --- Standings (Corrected to show Rank and hide Index) ---
+        # --- Standings (Unchanged) ---
         st.subheader("Current Standings 🏆")
-        
-        # Ensure 'tournament' is valid before calling get_standings
-        if tournament:
-            # Call get_standings, which now sanitizes the player list internally
-            standings = tournament.get_standings()
-        else:
-            standings = []
-            
-        # Define the expected columns for the DataFrame
-        column_names = [
-            'Rank', 'Name', 'Games Played', 'Wins', 'Points', 
-            'Net Hoops', 'Hoops Scored', 'Hoops Conceded'
-        ]
-
-        # Initialize df to a blank DataFrame using the defined columns.
-        df = pd.DataFrame(columns=column_names)
-
-        # Check if the list of players is NOT empty (after potential sanitization)
-        if standings: 
-            # --- STANDINGS DATA GENERATION (FIXED FOR ROBUSTNESS) ---
-            standings_data = []
-            for i, p in enumerate(standings):
-                # This check is now safe because the main sanitization is in get_standings
-                if not isinstance(p, Player):
-                    st.error(f"Error: Non-Player object found in standings list. Skipping entry.")
-                    continue
-                    
-                standings_data.append({
-                    'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
-                    'Name': p.name,
-                    'Games Played': tournament.get_games_played(p.id),
-                    'Wins': p.wins,
-                    'Points': p.points,
-                    'Net Hoops': p.hoops_scored - p.hoops_conceded,
-                    'Hoops Scored': p.hoops_scored,
-                    'Hoops Conceded': p.hoops_conceded 
-                })
-            
-            # Create DataFrame if data was generated
-            if standings_data:
-                df = pd.DataFrame(standings_data)
-            else:
-                # If 'standings' was not empty but all players were corrupt
-                st.info("No valid player data available for standings. Corrupted entries were skipped.")
-        
-        else:
-            st.info("No player data available yet. Please create a tournament with players above.")
-            
-        # FIX: Only call st.dataframe if the resulting DataFrame has rows 
-        if not df.empty:
-            st.dataframe(df, use_container_width=True, index=False) 
-        # --------------------------------------------------------------------
+        standings = tournament.get_standings()
+        standings_data = [{
+            'Rank': i+1,
+            'Name': p.name,
+            'Wins': p.wins,
+            'Points': p.points,
+            'Net Hoops': p.hoops_scored - p.hoops_conceded,
+            'Hoops Scored': p.hoops_scored
+        } for i, p in enumerate(standings)]
+        st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
         
         # --------------------------------------------------------------------
         # --- Save and Export (Disabled if Locked) ---
