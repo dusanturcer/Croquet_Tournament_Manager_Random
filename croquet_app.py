@@ -403,6 +403,11 @@ def main():
             border: 1px solid #2E7D32 !important;
         }
         
+        /* Ensure st.form buttons are also targeted */
+        .stForm .stButton button {
+            background-color: #4CAF50 !important;
+        }
+        
         /* Sidebar/Secondary button styling (adjust as needed) */
         .sidebar .stButton > button {
              background-color: #66BB6A !important; 
@@ -471,9 +476,6 @@ def main():
             st.warning("PERMANENT ACTION")
             
             # --- DELETE BUTTON ---
-            # NOTE: Custom CSS can sometimes be hard to override for single elements. 
-            # If you want this delete button to be red, you'd need more specific CSS or 
-            # use Streamlit's native `type="primary"` (which might still be overridden by the general CSS)
             if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button"):
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted.")
@@ -610,6 +612,7 @@ def main():
         # --- The Submission Form ---
         with st.form("results_submission_form"):
             st.markdown("---")
+            # This button will automatically be green due to the CSS targeting `.stForm .stButton button`
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
