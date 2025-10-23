@@ -85,7 +85,8 @@ class SwissTournament:
             available_players = self.players.copy()
             random.shuffle(available_players) 
         else:
-            available_players = self.get_standings()
+            # Use the robust get_standings which filters out corrupt objects
+            available_players = self.get_standings() 
         
         used_players = set()
         
@@ -143,7 +144,17 @@ class SwissTournament:
             match.set_result(hoops1, hoops2)
 
     def get_standings(self):
-        return sorted(self.players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
+        # FIX: Filter out any non-Player objects before attempting to sort.
+        clean_players = [p for p in self.players if isinstance(p, Player)]
+
+        # Permanently remove the corrupted data from the tournament's main player list
+        if len(clean_players) < len(self.players):
+             st.warning(f"Sanitizing player list: Removed {len(self.players) - len(clean_players)} non-player objects.")
+             self.players = clean_players 
+        
+        # Return the sorted, clean list
+        return sorted(clean_players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
+
 
     def get_round_pairings(self, round_num):
         if 0 <= round_num < len(self.rounds):
@@ -213,7 +224,10 @@ def save_to_db(tournament, tournament_name, conn):
             c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
             tournament_id = c.lastrowid
 
-        player_data = [(tournament_id, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in tournament.players]
+        # Use the clean list from get_standings to ensure only valid Player objects are saved
+        valid_players = tournament.get_standings()
+        
+        player_data = [(tournament_id, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in valid_players]
         c.executemany("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)", player_data)
 
         match_data = []
@@ -827,6 +841,7 @@ def main():
             if results_submitted:
                 
                 # Reset all player stats before reapplying scores
+                # This loop is safe because the standings logic now sanitizes self.players
                 for p in tournament.players:
                     p.points = 0
                     p.wins = 0
@@ -835,6 +850,7 @@ def main():
                 
                 # Reapply results using the values from the new result_key in session state
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
+                    # Defensive check for None/corruption on the match itself
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
                     if match is None or match.player2 is None: continue
@@ -891,6 +907,7 @@ def main():
         
         # Ensure 'tournament' is valid before calling get_standings
         if tournament:
+            # Call get_standings, which now sanitizes the player list internally
             standings = tournament.get_standings()
         else:
             standings = []
@@ -904,12 +921,12 @@ def main():
         # Initialize df to a blank DataFrame using the defined columns.
         df = pd.DataFrame(columns=column_names)
 
-        # Check if the list of players is NOT empty
+        # Check if the list of players is NOT empty (after potential sanitization)
         if standings: 
             # --- STANDINGS DATA GENERATION (FIXED FOR ROBUSTNESS) ---
             standings_data = []
             for i, p in enumerate(standings):
-                # Ensure the object is actually a Player instance before accessing attributes
+                # This check is now mostly redundant but safe (the main sanitization is in get_standings)
                 if not isinstance(p, Player):
                     st.error(f"Error: Non-Player object found in standings list. Skipping entry.")
                     continue
@@ -935,7 +952,7 @@ def main():
         else:
             st.info("No player data available yet. Please create a tournament with players above.")
             
-        # FIX: Only call st.dataframe if the resulting DataFrame has rows (prevents rendering crash on empty data)
+        # FIX: Only call st.dataframe if the resulting DataFrame has rows 
         if not df.empty:
             st.dataframe(df, use_container_width=True, index=False) 
         # --------------------------------------------------------------------
@@ -954,7 +971,7 @@ def main():
                 conn.close()
                 if tournament_id:
                     st.session_state.loaded_id = tournament_id
-                    st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
+                    st.success(f"Tournament '{st.session_state.tournament_name}' saved to database! (Corrupted data was removed before save)")
                     st.rerun()
 
         with col_export1:
