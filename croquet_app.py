@@ -538,11 +538,13 @@ def main():
     # Convert radio button selection to boolean for logic
     is_locked_bool = (st.session_state.is_locked == "Locked")
         
-    # FIX: Check the flag and show toast here in the main script body
+    # Check the flag and show toast here in the main script body
+    # This block executes immediately upon rerun, allowing the toast to be seen.
     if st.session_state._lock_changed:
         st.session_state._lock_changed = False  # Reset flag
         
         if is_locked_bool:
+            # Displays the floating toast bar
             st.toast("🔒 Tournament Input is Locked", icon="🚫")
         else:
             st.toast("🔓 Tournament Input is Unlocked", icon="✅")
@@ -553,8 +555,7 @@ def main():
     with st.sidebar:
         st.header("App Status")
         
-        # New Radio Button for Locking the app
-        # FIX: Call the new handler function
+        # Radio Button for Locking the app (Triggers handle_lock_change callback)
         st.session_state.is_locked = st.radio(
             "Tournament Input Status",
             ["Unlocked", "Locked"],
