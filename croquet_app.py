@@ -892,6 +892,9 @@ def main():
             'Net Hoops', 'Hoops Scored', 'Hoops Conceded'
         ]
 
+        # FIX 1: Initialize df to a blank DataFrame using the defined columns.
+        df = pd.DataFrame(columns=column_names)
+
         # Check if the list of players is NOT empty
         if standings: 
             # --- STANDINGS DATA GENERATION (FIXED FOR ROBUSTNESS) ---
@@ -913,15 +916,14 @@ def main():
                     'Hoops Conceded': p.hoops_conceded 
                 })
             
-            # Create DataFrame only if data was generated
+            # Create DataFrame if data was generated
             if standings_data:
                 df = pd.DataFrame(standings_data)
             else:
-                df = pd.DataFrame(columns=column_names)
+                # If 'standings' was not empty but all players were corrupt, 'df' remains the initialized empty DataFrame
+                st.info("No valid player data available for standings. Corrupted entries were skipped.")
         
         else:
-            # Create an EMPTY DataFrame with explicit columns
-            df = pd.DataFrame(columns=column_names)
             st.info("No player data available yet. Please create a tournament with players above.")
             
         # This line is now safe because 'df' is always a valid DataFrame object (empty or full)
