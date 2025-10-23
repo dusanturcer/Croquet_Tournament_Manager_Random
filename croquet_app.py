@@ -229,54 +229,21 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Callback Functions (Unchanged) ---
-
-def decrement_score(key, step, min_value):
-    input_key = f"{key}_input"
-    current_value = st.session_state.get(input_key, 0)
-    st.session_state[input_key] = max(min_value, current_value - step)
-
-def increment_score(key, step, max_value):
-    input_key = f"{key}_input"
-    current_value = st.session_state.get(input_key, 0)
-    st.session_state[input_key] = min(max_value, current_value + step)
-
-
 # --- Streamlit UI and Logic ---
 
-def number_input_with_buttons(key, min_value=0, max_value=26, step=1, label=""):
+# FIX: Simplified score input function
+def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
-    # Use a single, compact column layout for the buttons and input field
-    # [ - ] [ Input Field ] [ + ]
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col1:
-        st.button(
-            "−", 
-            key=f"minus_{key}",
-            on_click=decrement_score, 
-            args=(key, step, min_value),
-            # Use a smaller size for the button if possible (Streamlit doesn't natively support size directly, but columns help)
-        ) 
-
-    with col2:
-        st.number_input(
-            label, # Empty label to save space
-            min_value=min_value,
-            max_value=max_value,
-            step=step,
-            format="%d",
-            key=input_key
-        )
-        
-    with col3:
-        st.button(
-            "+", 
-            key=f"plus_{key}",
-            on_click=increment_score, 
-            args=(key, step, max_value)
-        )
+    # Use a single number input field
+    st.number_input(
+        label, # Empty label to save space
+        min_value=min_value,
+        max_value=max_value,
+        step=step,
+        format="%d",
+        key=input_key
+    )
     
     return int(st.session_state.get(input_key, 0))
 
@@ -344,11 +311,12 @@ def main():
                         
                     score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
-        # 2. Display Block with Compact Layout and NO BYE info
+        # 2. Display Block with Compact Layout, NO BYE info, and TWO COLUMNS
         for round_num in range(tournament.num_rounds):
             round_pairings = tournament.get_round_pairings(round_num)
             
-            non_bye_matches = [m for m in round_pairings if m.player2 is not None]
+            # Filter non-BYE matches
+            non_bye_matches = [match for match in round_pairings if match.player2 is not None]
             
             # If no competitive matches, skip the expander entirely.
             if not non_bye_matches:
@@ -359,61 +327,69 @@ def main():
             
             with st.expander(round_label, expanded=expanded_state):
                 
+                # Create two main columns for matches
+                match_col1, match_col2 = st.columns(2)
+                
                 match_display_num = 1
                 
-                for match_num, match in enumerate(round_pairings):
+                for i, match in enumerate(round_pairings):
                     if match.player2 is None:
-                        # SKIP all BYE matches entirely
+                        # Skip all BYE matches entirely
                         continue 
                         
-                    # Use the original key roots generated in the synchronization block
-                    hoops1_key = f"hoops1_r{round_num}_m{match_num}"
-                    hoops2_key = f"hoops2_r{round_num}_m{match_num}"
+                    # Determine which column to place the match in
+                    current_match_col = match_col1 if i % 2 == 0 else match_col2
                     
-                    # Layout: Match # | P1 Name | P1 Input | vs | P2 Input | P2 Name | Status
-                    col_num, col_p1, col_h1, col_vs, col_h2, col_p2, col_status = st.columns([0.5, 2, 1.5, 0.5, 1.5, 2, 1.5])
-                    
-                    with col_num:
-                        st.markdown(f"**{match_display_num}:**")
+                    with current_match_col:
+                        # Use the original key roots generated in the synchronization block
+                        hoops1_key = f"hoops1_r{round_num}_m{match_num}"
+                        hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                         
-                    with col_p1:
-                        st.markdown(f"**{match.player1.name}**")
+                        # Layout: Match # | P1 Name | P1 Input | P2 Input | P2 Name | Status
+                        col_num, col_p1, col_h1, col_h2, col_p2, col_status = st.columns([0.5, 2, 1, 1, 2, 1.5])
                         
-                    with col_h1:
-                        number_input_with_buttons(key=hoops1_key)
-                        
-                    with col_vs:
-                        st.markdown("vs")
-                        
-                    with col_h2:
-                        number_input_with_buttons(key=hoops2_key)
-                    
-                    with col_p2:
-                        st.markdown(f"**{match.player2.name}**")
-                        
-                    with col_status:
-                        # Instant Score Marking Logic
-                        input1_key = f"{hoops1_key}_input"
-                        input2_key = f"{hoops2_key}_input"
-                        
-                        live_hoops1 = st.session_state.get(input1_key, 0)
-                        live_hoops2 = st.session_state.get(input2_key, 0)
-
-                        status_text = f"{live_hoops1} - {live_hoops2}"
-                        
-                        if live_hoops1 > live_hoops2:
-                            status_delta = "P1 Wins"
-                        elif live_hoops2 > live_hoops1:
-                            status_delta = "P2 Wins"
-                        elif live_hoops1 == live_hoops2 and (live_hoops1 > 0):
-                            status_delta = "Draw (0 pts)"
-                        else:
-                            status_delta = " " # Empty delta if 0-0
-
-                        st.metric(label="Score", value=status_text, delta=status_delta)
+                        with col_num:
+                            st.markdown(f"**{match_display_num}:**")
                             
-                    st.markdown("---")
-                    match_display_num += 1
+                        with col_p1:
+                            st.subheader(match.player1.name)
+                            
+                        with col_h1:
+                            # Use number_input_simple (no buttons)
+                            number_input_simple(key=hoops1_key)
+                            
+                        # Removed the "vs" column for more space
+                        
+                        with col_h2:
+                            # Use number_input_simple (no buttons)
+                            number_input_simple(key=hoops2_key)
+                        
+                        with col_p2:
+                            st.subheader(match.player2.name)
+                            
+                        with col_status:
+                            # Instant Score Marking Logic
+                            input1_key = f"{hoops1_key}_input"
+                            input2_key = f"{hoops2_key}_input"
+                            
+                            live_hoops1 = st.session_state.get(input1_key, 0)
+                            live_hoops2 = st.session_state.get(input2_key, 0)
+
+                            status_text = f"{live_hoops1} - {live_hoops2}"
+                            
+                            if live_hoops1 > live_hoops2:
+                                status_delta = "P1 Wins"
+                            elif live_hoops2 > live_hoops1:
+                                status_delta = "P2 Wins"
+                            elif live_hoops1 == live_hoops2 and (live_hoops1 > 0):
+                                status_delta = "Draw (0 pts)"
+                            else:
+                                status_delta = " " # Empty delta if 0-0
+
+                            st.metric(label="Score", value=status_text, delta=status_delta)
+                                
+                        current_match_col.markdown("---") # Separator within the column
+                        match_display_num += 1
 
 
         # --- The Submission Form (Unchanged) ---
@@ -422,8 +398,7 @@ def main():
             st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
-            # Recalculation logic moved outside the button press check
-            # Streamlit reruns on input, but tournament updates only happen on form submit
+            # Recalculation logic
             for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                 match = tournament.get_round_pairings(round_num)[match_num]
                 
@@ -442,7 +417,9 @@ def main():
 
             if st.session_state.get("results_submission_form", False):
                 st.success("All visible match results updated! Standings recalculated.")
-                st.session_state["results_submission_form"] = False # Reset the form state
+                # Reset the form state key manually, as form submission automatically sets the button state
+                # but we use a key check here for consistency.
+                st.session_state["results_submission_form"] = False 
 
         # --- Standings (Unchanged) ---
         st.subheader("Current Standings 🏆")
