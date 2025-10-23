@@ -397,7 +397,6 @@ def _update_session_state_to_int(text_key, result_key, min_value, max_value):
             st.session_state[result_key] = 0
             
 # Updated number_input_simple function
-# ADDED: disabled parameter
 def number_input_simple(key, min_value=0, max_value=26, step=1, label="", disabled=False):
     
     # Define two separate keys: one for the raw string input, one for the clean integer result
@@ -455,6 +454,10 @@ def load_selected_tournament(selected_id):
             st.error(f"Error loading tournament data: {e}")
             st.session_state.tournament = None
             st.session_state.loaded_id = None
+            
+def lock_state_change():
+    """Forces a rerun when the lock status is changed."""
+    st.experimental_rerun()
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
@@ -541,7 +544,9 @@ def main():
             ["Unlocked", "Locked"],
             key="lock_radio",
             horizontal=True,
-            help="**Locked** prevents entry of scores and submission of results on this device."
+            help="**Locked** prevents entry of scores and submission of results on this device.",
+            # FIX: Force a rerun immediately when the lock state changes
+            on_change=lock_state_change 
         )
         
         st.header("Load Saved Tournament")
