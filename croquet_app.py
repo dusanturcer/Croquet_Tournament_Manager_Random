@@ -296,7 +296,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     conn.close()
     return tournament, tournament_name, num_rounds
 
-# --- Export Functions (Complete - Omitted for brevity) ---
+# --- Export Functions (Omitted for brevity) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -381,6 +381,37 @@ def load_selected_tournament(selected_id):
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
+    
+    # --- Custom CSS for Green Buttons ---
+    st.markdown("""
+        <style>
+        /* Target the main Streamlit button container and the primary buttons */
+        div.stButton > button, 
+        .stButton button {
+            background-color: #4CAF50 !important; /* Green background */
+            color: white !important; /* White text */
+            border: 1px solid #388E3C !important; /* Darker green border */
+            border-radius: 5px !important;
+            padding: 10px 24px !important;
+            transition: 0.3s;
+        }
+
+        /* Hover effect (slightly darker green) */
+        div.stButton > button:hover,
+        .stButton button:hover {
+            background-color: #388E3C !important;
+            border: 1px solid #2E7D32 !important;
+        }
+        
+        /* Sidebar/Secondary button styling (adjust as needed) */
+        .sidebar .stButton > button {
+             background-color: #66BB6A !important; 
+        }
+
+        </style>
+        """, unsafe_allow_html=True)
+    # --- End Custom CSS ---
+    
     st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
 
     # Initialize state variables
@@ -389,20 +420,18 @@ def main():
         st.session_state.tournament_name = "New Tournament"
         st.session_state.players = []
         st.session_state.num_rounds = 3
-        st.session_state.tournament_list_refreshed = False # Flag to track if the list needs a refresh
+        st.session_state.tournament_list_refreshed = False
 
     # --- Sidebar for Loading Saved Tournaments ---
     with st.sidebar:
         st.header("Load Saved Tournament")
         init_db()
         
-        # Load the list of tournaments (this runs on every rerun)
         tournaments_list = load_tournaments_list()
         
         display_list = ["--- New Tournament ---"] + [t[1] for t in tournaments_list]
         id_map = {t[1]: t[0] for t in tournaments_list}
         
-        # Determine the default index for the selectbox
         default_index = 0
         current_name = st.session_state.tournament_name
         
@@ -424,7 +453,7 @@ def main():
         
         if selected_display == "--- New Tournament ---":
             if st.session_state.tournament:
-                if st.button("Start New Tournament"):
+                if st.button("Start New Tournament", key="new_tournament_button"):
                     st.session_state.tournament = None
                     st.session_state.tournament_name = "New Tournament"
                     st.session_state.players = []
@@ -442,10 +471,12 @@ def main():
             st.warning("PERMANENT ACTION")
             
             # --- DELETE BUTTON ---
+            # NOTE: Custom CSS can sometimes be hard to override for single elements. 
+            # If you want this delete button to be red, you'd need more specific CSS or 
+            # use Streamlit's native `type="primary"` (which might still be overridden by the general CSS)
             if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button"):
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted.")
-                    # Force rerun to immediately refresh the sidebar list
                     st.session_state.tournament = None
                     st.session_state.tournament_name = "New Tournament"
                     st.rerun()
@@ -483,7 +514,6 @@ def main():
         
         score_keys_to_update = [] 
         
-        # 1. Synchronization and Key Generation Block
         for round_num in range(tournament.num_rounds):
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
@@ -503,7 +533,6 @@ def main():
                         
                     score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
-        # 2. Display Block with Compact Layout, NO BYE info, and TWO COLUMNS
         for round_num in range(tournament.num_rounds):
             round_pairings = tournament.get_round_pairings(round_num)
             
@@ -621,18 +650,16 @@ def main():
         col_save, col_export1, col_export2 = st.columns(3)
 
         with col_save:
-            # Modified Save Block
-            if st.button("Save Tournament to Database (Overwrites existing name)"):
+            if st.button("Save Tournament to Database (Overwrites existing name)", key="save_button"):
                 conn = init_db()
                 save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
                 st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
-                # Force rerun to reload the sidebar list immediately
                 st.session_state.tournament_list_refreshed = True 
                 st.rerun()
 
         with col_export1:
-            if st.button("Generate CSV"):
+            if st.button("Generate CSV", key="csv_button"):
                 filename = export_to_csv(tournament, st.session_state.tournament_name)
                 if filename:
                     with open(filename, 'rb') as f:
@@ -645,7 +672,7 @@ def main():
                     os.remove(filename)
 
         with col_export2:
-            if st.button("Generate Excel"):
+            if st.button("Generate Excel", key="excel_button"):
                 filename = export_to_excel(tournament, st.session_state.tournament_name)
                 if filename:
                     with open(filename, 'rb') as f:
