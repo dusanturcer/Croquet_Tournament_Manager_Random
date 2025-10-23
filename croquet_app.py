@@ -367,20 +367,52 @@ def export_to_excel(tournament, tournament_name):
 # --- Streamlit UI and Logic (Main Function) ---
 # ----------------------------------------------------------------------
 
+# MODIFIED: Use st.text_input to allow the field to be visually empty for zero scores.
 def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
-    st.number_input(
+    # 1. Get current score. If it's 0, set the display value to an empty string.
+    current_value = st.session_state.get(input_key, 0)
+    display_value = "" if current_value == 0 else str(current_value)
+
+    # 2. Use st.text_input instead of st.number_input
+    # The 'type="text"' here is for compatibility, but we use input_type="text"
+    text_value = st.text_input(
         label,
-        min_value=min_value,
-        max_value=max_value,
-        step=step,
-        format="%d",
-        key=input_key
+        value=display_value,
+        max_chars=2, # Max score of 26 needs max 2 chars
+        key=input_key,
+        help="Enter score. Max 26.",
+        
+        # This callback function is crucial: it runs AFTER the text input changes.
+        on_change=lambda: _update_session_state_to_int(input_key, min_value, max_value)
     )
     
-    # We retrieve the integer value from session state
+    # Return the integer value, defaulting to 0 if the field is empty or non-numeric
     return int(st.session_state.get(input_key, 0))
+
+def _update_session_state_to_int(key, min_value, max_value):
+    """Callback function to convert the text input to a clean integer."""
+    raw_value = st.session_state[key].strip()
+    
+    if not raw_value:
+        st.session_state[key] = 0
+    else:
+        try:
+            # Convert the valid number string to an integer
+            num = int(raw_value)
+            
+            # Apply bounds checking
+            if num < min_value:
+                st.session_state[key] = min_value
+            elif num > max_value:
+                st.session_state[key] = max_value
+            else:
+                st.session_state[key] = num
+                
+        except ValueError:
+            # If the user enters non-numeric text, reset to 0
+            st.session_state[key] = 0
 
 def load_selected_tournament(selected_id):
     if selected_id:
@@ -389,7 +421,8 @@ def load_selected_tournament(selected_id):
             
             # Clear all old match score states for the previous tournament
             for key in list(st.session_state.keys()):
-                if key.startswith(("hoops1_", "hoops2_")) and key.endswith(("_input")):
+                # Delete both the default value (hoops1_...) and the input key (hoops1_..._input)
+                if key.startswith(("hoops1_", "hoops2_")):
                     del st.session_state[key]
             
             st.session_state.tournament = tournament
@@ -437,27 +470,12 @@ def main():
             border: 1px solid #388E3C !important;
         }
         
-        /* FIX: Make TYPED number visible */
-        div[data-baseweb="input"] input[type="number"] {
+        /* Make the text input area bold */
+        /* Targets the container around st.text_input */
+        div[data-testid^="stTextInput"] input {
             color: black !important; 
             font-weight: bold;
-        }
-        
-        /* Original rule to hide zeros, now modified to ensure visibility */
-        div[data-baseweb="input"] input[type="number"][value="0"] {
-            color: black !important; 
-        }
-        
-        /* FIX: Make the +/- buttons bigger */
-        div[data-baseweb="input"] button {
-             color: #4CAF50 !important;
-             min-width: 30px !important; 
-             padding: 5px !important;
-        }
-        
-        /* FIX: Increase the size of the arrows themselves */
-        div[data-baseweb="input"] button span {
-            font-size: 1.2em !important; 
+            text-align: center; /* Center the score for better alignment */
         }
         
         /* Ensure the form container doesn't reset button width */
@@ -570,7 +588,8 @@ def main():
                 else:
                     # Clear old score states from any previous tournament
                     for key in list(st.session_state.keys()):
-                        if key.startswith(("hoops1_", "hoops2_")) and key.endswith(("_input")):
+                        # Check for both the old number input keys and the new text input keys
+                        if key.startswith(("hoops1_", "hoops2_")):
                             if key in st.session_state:
                                 del st.session_state[key]
                             
@@ -579,7 +598,7 @@ def main():
                     st.success("Tournament created! All pairings generated. Scroll down to enter results.")
                     st.rerun() # Rerun to update the page structure
 
-    # --- Main Content: Tournament Management (MODIFIED) ---
+    # --- Main Content: Tournament Management ---
     if st.session_state.tournament:
         tournament = st.session_state.tournament
         
@@ -602,7 +621,8 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
-                    # Initialize Streamlit session state with current DB values
+                    # Initialize Streamlit session state with current DB values (as integers)
+                    # The number_input_simple function handles displaying 0 as ""
                     if input1_key not in st.session_state:
                         st.session_state[input1_key] = current_hoops1
                     
@@ -677,6 +697,7 @@ def main():
                                 input1_key = f"{hoops1_key}_input"
                                 input2_key = f"{hoops2_key}_input"
                                 
+                                # Retrieve the cleaned integer values from the session state
                                 live_hoops1 = st.session_state.get(input1_key, 0)
                                 live_hoops2 = st.session_state.get(input2_key, 0)
 
@@ -725,10 +746,12 @@ def main():
                     hoops1_key = f"{hoops1_key_root}_input"
                     hoops2_key = f"{hoops2_key_root}_input"
                     
+                    # Ensure we use the cleaned integer value from the session state
                     hoops1 = st.session_state.get(hoops1_key, 0)
                     hoops2 = st.session_state.get(hoops2_key, 0)
                     
-                    if hoops1 == hoops2:
+                    if hoops1 == hoops2 and hoops1 > 0:
+                         # Warning changed to only trigger if non-zero equal scores are entered
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded.")
                     
                     # Temporarily reset match.result to None to allow record_result to function as a set/reset
@@ -749,6 +772,9 @@ def main():
                     non_bye_matches = [m for m in pairings if m and m.player2]
                     
                     # Check if the round is now fully complete (no match.result is None)
+                    # We check for None here because if the result is (0, 0), it means it was explicitly
+                    # set to zero and the round shouldn't be considered incomplete for generation purposes, 
+                    # but if it's None, it means the match wasn't even attempted to be scored.
                     if any(m.result is None for m in non_bye_matches):
                         # An existing round is incomplete, stop checking
                         all_rounds_complete_for_gen = False
