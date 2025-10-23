@@ -859,7 +859,13 @@ def main():
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         
-        # ADDED CHECK: Only proceed if there are players in the standings list
+        # Define the expected columns for the DataFrame
+        column_names = [
+            'Rank', 'Name', 'Games Played', 'Wins', 'Points', 
+            'Net Hoops', 'Hoops Scored', 'Hoops Conceded'
+        ]
+
+        # Check if the list of players is NOT empty
         if standings: 
             # --- STANDINGS DATA GENERATION ---
             standings_data = [{
@@ -873,11 +879,15 @@ def main():
                 'Hoops Conceded': p.hoops_conceded 
             } for i, p in enumerate(standings)]
             
-            # Display the DataFrame, explicitly setting index=False to hide the default Pandas index
-            st.dataframe(pd.DataFrame(standings_data), use_container_width=True, index=False) 
+            df = pd.DataFrame(standings_data)
         
         else:
+            # FIX: Create an EMPTY DataFrame with explicit columns to avoid TypeError
+            df = pd.DataFrame(columns=column_names)
             st.info("No player data available yet. Please create a tournament with players above.")
+            
+        # This line is now safe because 'df' is always a valid DataFrame object (empty or full)
+        st.dataframe(df, use_container_width=True, index=False) 
         # --------------------------------------------------------------------
         
         # --------------------------------------------------------------------
