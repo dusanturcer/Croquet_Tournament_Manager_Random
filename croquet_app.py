@@ -396,8 +396,7 @@ def main():
             border-radius: 5px !important;
             padding: 10px 24px !important;
             transition: 0.3s;
-            /* Ensure the form button is not treated as a secondary style */
-            width: 100%; 
+            width: 100% !important; /* Forces all buttons to fill their column/container */
         }
         
         /* Hover effect (slightly darker green) on all button types */
@@ -673,10 +672,12 @@ def main():
         # --- Save and Export ---
         st.subheader("Save and Export")
         
+        # Changed column layout to 1:1:1 implicit columns
         col_save, col_export1, col_export2 = st.columns(3)
 
         with col_save:
-            if st.button("Save Tournament to Database (Overwrites existing name)", key="save_button"):
+            # Renamed the button
+            if st.button("Save Tournament", key="save_button"):
                 conn = init_db()
                 save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
