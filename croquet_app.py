@@ -145,7 +145,7 @@ class SwissTournament:
         return []
 
 # ----------------------------------------------------------------------
-# --- Database Functions (Unchanged) ---
+# --- Database Functions ---
 # ----------------------------------------------------------------------
 
 DB_PATH = 'tournament.db'
@@ -297,7 +297,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     conn.close()
     return tournament, tournament_name, num_rounds
 
-# --- Export Functions (Unchanged) ---
+# --- Export Functions (Omitted for brevity) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -383,15 +383,13 @@ def load_selected_tournament(selected_id):
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     
-    # --- Custom CSS for Green Buttons and Hiding 0s in Number Inputs ---
+    # --- Custom CSS for Green Buttons and Form Submit Button (CORRECTED) ---
     st.markdown("""
         <style>
-        /* Green Button Styles */
-        /* Target all Streamlit buttons with the most specific selectors */
+        /* Green Button Styles (General Buttons) */
+        /* Targets default buttons, sidebar buttons, and buttons in columns */
         div.stButton > button, 
-        .stButton button,
-        /* Target form buttons explicitly as well */
-        .stForm div.stButton > button {
+        .stButton button {
             background-color: #4CAF50 !important; /* Green background */
             color: white !important; /* White text */
             border: 1px solid #388E3C !important; /* Darker green border */
@@ -401,27 +399,26 @@ def main():
             /* Ensure the form button is not treated as a secondary style */
             width: 100%; 
         }
-
-        /* Hover effect (slightly darker green) */
+        
+        /* Hover effect (slightly darker green) on all button types */
         div.stButton > button:hover,
         .stButton button:hover,
-        .stForm div.stButton > button:hover {
+        button[data-testid="stBaseButton-secondaryFormSubmit"]:hover {
             background-color: #388E3C !important;
             border: 1px solid #2E7D32 !important;
         }
-        
-        /* Sidebar/Secondary button styling (adjust as needed) */
-        .sidebar .stButton > button {
-             background-color: #66BB6A !important; 
+
+        /* --- SPECIFICALLY TARGET THE FORM SUBMIT BUTTON (GREEN) --- */
+        /* Targets the actual button element inside the form submit container */
+        button[data-testid="stBaseButton-secondaryFormSubmit"] {
+            /* Override Streamlit's default form submit button style */
+            background-color: #4CAF50 !important;
+            color: white !important;
+            border: 1px solid #388E3C !important;
         }
         
         /* HIDDEN ZEROS IN NUMBER INPUTS */
-        /* Target the input fields within Streamlit's number container (stNumberInput) */
-        div[data-baseweb="input"] input[type="number"] {
-            color: black !important; /* Default color for numbers > 0 */
-        }
-        
-        /* Target only when the value is "0" to hide the text */
+        /* Targets the actual input field when its value attribute is "0" */
         div[data-baseweb="input"] input[type="number"][value="0"] {
             color: transparent !important; /* Hide the '0' by making it transparent */
         }
@@ -429,6 +426,11 @@ def main():
         /* Make the arrows visible even if the number is 0 */
         div[data-baseweb="input"] button {
              color: #4CAF50 !important; /* Make buttons (arrows) green */
+        }
+        
+        /* Ensure the form container doesn't reset button width */
+        .stForm div[data-testid="stFormSubmitButton"] {
+            width: 100%;
         }
 
         </style>
@@ -509,7 +511,6 @@ def main():
             st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name)
             player_input = st.text_area("Enter player names (one per line)", "\n".join(st.session_state.players))
             st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds, step=1)
-            # This is a form button and will be styled green by the updated CSS
             submitted = st.form_submit_button("Create Tournament")
 
             if submitted and st.session_state.tournament_name and player_input:
@@ -596,11 +597,9 @@ def main():
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_h1:
-                            # st.number_input here displays 0 but CSS hides it
                             number_input_simple(key=hoops1_key)
                         
                         with col_h2:
-                            # st.number_input here displays 0 but CSS hides it
                             number_input_simple(key=hoops2_key)
                         
                         with col_p2:
@@ -636,8 +635,7 @@ def main():
         # --- The Submission Form ---
         with st.form("results_submission_form"):
             st.markdown("---")
-            # This button will now be green due to the updated CSS selector:
-            # .stForm div.stButton > button
+            # This is the form button that is now targeted by the specific CSS
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
