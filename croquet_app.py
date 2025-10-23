@@ -859,20 +859,25 @@ def main():
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         
-        # --- STANDINGS DATA GENERATION ---
-        standings_data = [{
-            'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
-            'Name': p.name,
-            'Games Played': tournament.get_games_played(p.id),
-            'Wins': p.wins,
-            'Points': p.points,
-            'Net Hoops': p.hoops_scored - p.hoops_conceded,
-            'Hoops Scored': p.hoops_scored,
-            'Hoops Conceded': p.hoops_conceded 
-        } for i, p in enumerate(standings)]
+        # ADDED CHECK: Only proceed if there are players in the standings list
+        if standings: 
+            # --- STANDINGS DATA GENERATION ---
+            standings_data = [{
+                'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
+                'Name': p.name,
+                'Games Played': tournament.get_games_played(p.id),
+                'Wins': p.wins,
+                'Points': p.points,
+                'Net Hoops': p.hoops_scored - p.hoops_conceded,
+                'Hoops Scored': p.hoops_scored,
+                'Hoops Conceded': p.hoops_conceded 
+            } for i, p in enumerate(standings)]
+            
+            # Display the DataFrame, explicitly setting index=False to hide the default Pandas index
+            st.dataframe(pd.DataFrame(standings_data), use_container_width=True, index=False) 
         
-        # Display the DataFrame, explicitly setting index=False to hide the default Pandas index
-        st.dataframe(pd.DataFrame(standings_data), use_container_width=True, index=False) 
+        else:
+            st.info("No player data available yet. Please create a tournament with players above.")
         # --------------------------------------------------------------------
         
         # --------------------------------------------------------------------
