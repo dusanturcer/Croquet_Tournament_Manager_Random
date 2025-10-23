@@ -455,7 +455,11 @@ def load_selected_tournament(selected_id):
             st.session_state.tournament = None
             st.session_state.loaded_id = None
 
-# Removed: lock_state_change function that called st.rerun()
+# FIX: Re-introduce the on_change function to force a *clean* rerun, 
+# ensuring the `disabled` attributes are correctly applied.
+def lock_state_change():
+    """Forces a rerun when the lock status is changed."""
+    st.rerun() 
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
@@ -537,14 +541,14 @@ def main():
         st.header("App Status")
         
         # New Radio Button for Locking the app
-        # FIX: Removed on_change=lock_state_change. Changing the radio button value updates
-        # st.session_state.is_locked and naturally triggers a rerun, which is the desired behavior.
+        # FIX: Added the on_change callback back to force a proper rerun.
         st.session_state.is_locked = st.radio(
             "Tournament Input Status",
             ["Unlocked", "Locked"],
             key="lock_radio",
             horizontal=True,
-            help="**Locked** prevents entry of scores and submission of results on this device."
+            help="**Locked** prevents entry of scores and submission of results on this device.",
+            on_change=lock_state_change 
         )
         
         st.header("Load Saved Tournament")
