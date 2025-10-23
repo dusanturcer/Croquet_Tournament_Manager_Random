@@ -407,7 +407,7 @@ def load_selected_tournament(selected_id):
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     
-    # --- Custom CSS (MODIFIED for highlighting fix) ---
+    # --- Custom CSS (Modified to remove unreliable highlight CSS, keeping button/input fixes) ---
     st.markdown("""
         <style>
         /* Green Button Styles (General Buttons) */
@@ -464,14 +464,13 @@ def main():
         .stForm div[data-testid="stFormSubmitButton"] {
             width: 100%;
         }
-
-        /* NEW: Highlight class for completed rounds */
-        /* Target the parent container of the expander and drill down to the Streamlit expander element */
-        .round-complete-container > div:first-child > div:first-child > div:first-child {
-            background-color: #E6F7E6 !important; /* Light Green background */
-            border-left: 5px solid #4CAF50 !important; /* Green border for emphasis */
-            border-radius: 5px !important;
-            padding: 5px !important;
+        
+        /* CSS for the success text */
+        .round-complete-text {
+            color: #4CAF50; /* Green color */
+            font-weight: bold;
+            margin-top: -10px; /* Pull it up closer to the expander */
+            padding-left: 10px;
         }
 
         </style>
@@ -623,7 +622,7 @@ def main():
                 if not non_bye_matches:
                     continue
                 
-                # Check if the round is complete based on stored results (not session state)
+                # Check if the round is complete based on stored results (match.result != None)
                 is_round_complete = all(m.result is not None for m in non_bye_matches)
 
                 round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
@@ -631,15 +630,7 @@ def main():
                 # Determine initial expansion state: expand incomplete/current round, collapse others
                 expanded_state = not is_round_complete and (round_num == len(tournament.rounds) - 1 or round_num == 0)
 
-                # Use st.container() to apply the CSS class before the expander
-                round_container = st.container()
-                
-                # Apply the highlight class if complete
-                if is_round_complete:
-                    # Apply a class to the container when complete
-                    round_container.markdown(f'<div class="round-complete-container">', unsafe_allow_html=True)
-                
-                with round_container.expander(round_label, expanded=expanded_state):
+                with st.expander(round_label, expanded=expanded_state):
                     
                     match_col1, match_col2 = st.columns(2)
                     match_display_num = 1
@@ -706,9 +697,10 @@ def main():
                             current_match_col.markdown("---")
                             match_display_num += 1
                 
-                # Close the custom div if the round was complete
+                # --- NEW: Display completion text outside the expander ---
                 if is_round_complete:
-                    round_container.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown('<p class="round-complete-text">✅ All games played for this round</p>', unsafe_allow_html=True)
+                # --------------------------------------------------------
 
             st.markdown("---")
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
@@ -776,7 +768,7 @@ def main():
                     st.rerun()
 
                 st.success("All match results processed! Standings recalculated.")
-                # Always rerun after an update to show the highlight immediately
+                # Always rerun after an update to show the completion text immediately
                 st.rerun()
 
 
