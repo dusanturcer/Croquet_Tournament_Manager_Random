@@ -455,11 +455,13 @@ def load_selected_tournament(selected_id):
             st.session_state.tournament = None
             st.session_state.loaded_id = None
 
-# FIX: Re-introduce the on_change function to force a *clean* rerun, 
-# ensuring the `disabled` attributes are correctly applied.
-def lock_state_change():
-    """Forces a rerun when the lock status is changed."""
-    st.rerun() 
+# FIX: New callback function to set the flag and trigger the main script's rerun
+def handle_lock_change():
+    """Sets a flag to force a full rerun from the main script body."""
+    # The radio button change already updates st.session_state.is_locked
+    st.session_state._lock_changed = True
+    # The immediate st.rerun() here is a no-op, but the flag will trigger one immediately after the callback returns.
+
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
@@ -529,10 +531,17 @@ def main():
         st.session_state.num_rounds = 3
         st.session_state.loaded_id = None 
     
-    # Initialize the new lock state
+    # Initialize the new lock state and the rerun flag
     if 'is_locked' not in st.session_state:
         st.session_state.is_locked = "Unlocked"
-    
+    if '_lock_changed' not in st.session_state:
+        st.session_state._lock_changed = False
+        
+    # FIX: Check the flag here in the main script body
+    if st.session_state._lock_changed:
+        st.session_state._lock_changed = False  # Reset flag
+        st.rerun()  # Force the full rerun to apply the disabled state
+
     # Convert radio button selection to boolean for logic
     is_locked_bool = (st.session_state.is_locked == "Locked")
 
@@ -541,14 +550,14 @@ def main():
         st.header("App Status")
         
         # New Radio Button for Locking the app
-        # FIX: Added the on_change callback back to force a proper rerun.
+        # FIX: Call the new handler function
         st.session_state.is_locked = st.radio(
             "Tournament Input Status",
             ["Unlocked", "Locked"],
             key="lock_radio",
             horizontal=True,
             help="**Locked** prevents entry of scores and submission of results on this device.",
-            on_change=lock_state_change 
+            on_change=handle_lock_change
         )
         
         st.header("Load Saved Tournament")
