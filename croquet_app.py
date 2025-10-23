@@ -56,13 +56,19 @@ class Match:
 
 class SwissTournament:
     def __init__(self, players_names_or_objects, num_rounds):
-        if all(isinstance(p, str) for p in players_names_or_objects):
+        
+        # Determine if we are creating a new tournament (list of strings) or loading one (list of Player objects)
+        is_new_tournament = all(isinstance(p, str) for p in players_names_or_objects)
+        
+        if is_new_tournament:
             self.players = [Player(i, name) for i, name in enumerate(players_names_or_objects)]
             self.rounds = []
+            # ONLY GENERATE ROUNDS AUTOMATICALLY FOR A NEW TOURNAMENT
             for round_num in range(num_rounds):
                 initial = (round_num == 0)
                 self.generate_round_pairings(round_num, initial=initial) 
         else:
+            # WHEN LOADING, just set the players and wait for rounds to be loaded from DB
             self.players = players_names_or_objects
             self.rounds = [] 
             
@@ -299,7 +305,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
     
     # Create the tournament object with the correct list size for rounds
-    tournament = SwissTournament(players_list, num_rounds)
+    tournament = SwissTournament(players_list, num_rounds) # Passes Player objects, skipping auto-generation
     tournament.rounds = [[] for _ in range(num_rounds)] 
     
     c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ? ORDER BY round_num, match_num", (tournament_id,))
