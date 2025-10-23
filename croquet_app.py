@@ -8,6 +8,11 @@ import os
 from datetime import datetime
 from collections import Counter
 import uuid
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # --- Player and Match Classes (Unchanged) ---
 
@@ -145,14 +150,16 @@ class SwissTournament:
 
 # --- Database Functions ---
 
-DB_PATH = 'tournament.db'
+DB_PATH = os.getenv("TOURNAMENT_DB_PATH", "tournament.db")
 
 def get_db_mtime(db_path=DB_PATH):
     try:
         if os.path.exists(db_path):
             return os.path.getmtime(db_path)
+        logger.warning(f"Database file {db_path} does not exist.")
         return 0.0
     except OSError as e:
+        logger.error(f"Error accessing database file {db_path}: {e}")
         st.error(f"Error accessing database file: {e}")
         return 0.0
 
@@ -160,6 +167,7 @@ def init_db(db_path=DB_PATH):
     try:
         db_dir = os.path.dirname(db_path) or '.'
         if not os.access(db_dir, os.W_OK):
+            logger.error(f"No write permissions for directory {db_dir}")
             st.error(f"No write permissions for directory {db_dir}. Please ensure the app has write access.")
             return None
         
@@ -180,11 +188,14 @@ def init_db(db_path=DB_PATH):
                      (tournament_id INTEGER, round_num INTEGER, match_num INTEGER,
                       player1_id INTEGER, player2_id INTEGER, hoops1 INTEGER, hoops2 INTEGER)''')
         conn.commit()
+        logger.info(f"Database initialized successfully at {db_path}")
         return conn
     except sqlite3.Error as e:
+        logger.error(f"Database initialization error: {e}")
         st.error(f"Database initialization error: {e}")
         return None
     except OSError as e:
+        logger.error(f"File system error: {e}")
         st.error(f"File system error: {e}")
         return None
 
@@ -219,13 +230,22 @@ def save_to_db(tournament, tournament_name, conn):
         c.executemany("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, hoops1, hoops2) VALUES (?, ?, ?, ?, ?, ?, ?)", match_data)
 
         conn.commit()
+        c.execute("SELECT COUNT(*) FROM tournaments")
+        count = c.fetchone()[0]
+        logger.debug(f"Number of tournaments after save: {count}")
+        c.execute("SELECT id, name, date FROM tournaments")
+        tournaments = c.fetchall()
+        logger.debug(f"Tournaments after save: {tournaments}")
         st.cache_data.clear()
+        logger.info(f"Tournament '{tournament_name}' saved with ID {tournament_id}")
         return tournament_id
     except sqlite3.Error as e:
+        logger.error(f"Database error on save: {e}")
         st.error(f"Database error on save: {e}")
         conn.rollback()
         return None
     except Exception as e:
+        logger.error(f"Unexpected error on save: {e}")
         st.error(f"Unexpected error on save: {e}")
         conn.rollback()
         return None
@@ -243,24 +263,39 @@ def delete_tournament_from_db(tournament_id, db_path=DB_PATH):
         
         conn.commit()
         st.cache_data.clear()
+        logger.info(f"Tournament ID {tournament_id} deleted successfully")
         return True
     except sqlite3.Error as e:
+        logger.error(f"Database error on delete: {e}")
         st.error(f"Database error on delete: {e}")
         return False
     except Exception as e:
+        logger.error(f"Unexpected error on delete: {e}")
         st.error(f"Unexpected error on delete: {e}")
         return False
     finally:
         conn.close()
 
 @st.cache_data(show_spinner="Refreshing tournament list...")
-def load_tournaments_list(db_mtime, db_path=DB_PATH):
+def load_tournaments_list(db_mtime, db_path=DB_PATH, _cache_buster=str(uuid.uuid4())):
     try:
+        if not os.path.exists(db_path):
+            logger.warning(f"Database file {db_path} does not exist")
+            st.warning(f"Database file {db_path} does not exist")
+            return []
+        
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
         tournaments = c.fetchall()
         conn.close()
+        
+        logger.debug(f"Raw tournaments from database: {tournaments}")
+        
+        if not tournaments:
+            logger.warning("No tournaments found in the database")
+            st.warning("No tournaments found in the database. Create and save a tournament to populate the list.")
+            return []
         
         name_counts = Counter(t[1] for t in tournaments)
         result_list = []
@@ -271,9 +306,15 @@ def load_tournaments_list(db_mtime, db_path=DB_PATH):
                 display_name = f"{t_name} ({t_date.split(' ')[0]})"
             result_list.append((t_id, display_name))
         
+        logger.info(f"Loaded {len(result_list)} tournaments for dropdown")
         return result_list
     except sqlite3.Error as e:
+        logger.error(f"Error loading tournaments list: {e}")
         st.error(f"Error loading tournaments list: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error loading tournaments list: {e}")
+        st.error(f"Unexpected error loading tournaments list: {e}")
         return []
 
 def load_tournament_data(tournament_id, db_path=DB_PATH):
@@ -284,6 +325,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         c.execute("SELECT name FROM tournaments WHERE id = ?", (tournament_id,))
         result = c.fetchone()
         if not result:
+            logger.error(f"No tournament found with ID {tournament_id}")
             st.error(f"No tournament found with ID {tournament_id}")
             conn.close()
             return None, None, None
@@ -293,6 +335,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         player_data = c.fetchall()
         
         if not player_data:
+            logger.error(f"No players found for tournament ID {tournament_id}")
             st.error(f"No players found for tournament ID {tournament_id}")
             conn.close()
             return None, None, None
@@ -322,6 +365,7 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
             p2 = player_map.get(p2_id) if p2_id != -1 else None
             
             if p1 is None:
+                logger.warning(f"Player ID {p1_id} not found for match in round {r_num}, match {m_num}")
                 st.warning(f"Player ID {p1_id} not found for match in round {r_num}, match {m_num}")
                 continue
 
@@ -341,11 +385,14 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
             tournament.rounds[r_num][m_num] = match
 
         conn.close()
+        logger.info(f"Tournament ID {tournament_id} loaded successfully")
         return tournament, tournament_name, num_rounds
     except sqlite3.Error as e:
+        logger.error(f"Database error loading tournament {tournament_id}: {e}")
         st.error(f"Database error loading tournament {tournament_id}: {e}")
         return None, None, None
     except Exception as e:
+        logger.error(f"Unexpected error loading tournament {tournament_id}: {e}")
         st.error(f"Unexpected error loading tournament {tournament_id}: {e}")
         return None, None, None
 
@@ -366,6 +413,7 @@ def export_to_csv(tournament, tournament_name):
                     writer.writerow([round_num + 1, match_num + 1, match.player1.name, player2, hoops1, hoops2])
         return filename
     except IOError as e:
+        logger.error(f"Error writing CSV: {e}")
         st.error(f"Error writing CSV: {e}")
         return None
 
@@ -391,6 +439,7 @@ def export_to_excel(tournament, tournament_name):
         df.to_excel(filename, index=False)
         return filename
     except Exception as e:
+        logger.error(f"Error writing Excel: {e}")
         st.error(f"Error writing Excel: {e}")
         return None
 
@@ -461,6 +510,7 @@ def load_selected_tournament(selected_id):
         st.session_state.loaded_id = selected_id
         st.success(f"Tournament '{tournament_name}' loaded successfully.")
     except Exception as e:
+        logger.error(f"Error loading tournament {selected_id}: {e}")
         st.error(f"Error loading tournament: {e}")
         st.session_state.tournament = None
         st.session_state.tournament_name = "New Tournament"
@@ -470,6 +520,31 @@ def load_selected_tournament(selected_id):
 
 def handle_lock_change():
     st.session_state._lock_changed = True
+
+def check_database_content(db_path=DB_PATH):
+    try:
+        if not os.path.exists(db_path):
+            return "Database file does not exist."
+        
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tournaments'")
+        if not c.fetchone():
+            conn.close()
+            return "Tournaments table does not exist."
+        
+        c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
+        tournaments = c.fetchall()
+        conn.close()
+        
+        if not tournaments:
+            return "No tournaments found in the database."
+        
+        return f"Found {len(tournaments)} tournaments: {tournaments}"
+    except sqlite3.Error as e:
+        return f"Error checking database: {e}"
+    except Exception as e:
+        return f"Unexpected error: {e}"
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
@@ -559,8 +634,15 @@ def main():
         else:
             conn.close()
         
+        st.subheader("Debug Database")
+        if st.button("Check Database Content", key="check_db_button"):
+            db_content = check_database_content()
+            st.info(f"Database status: {db_content}")
+        
         if st.button("Refresh Tournament List", key="refresh_tournaments"):
+            logger.info("Manual cache invalidation triggered")
             st.cache_data.clear()
+            st.success("Tournament list refreshed!")
             st.rerun()
         
         db_mtime = get_db_mtime()
@@ -587,6 +669,7 @@ def main():
         
         if selected_display == "--- New Tournament ---" and st.session_state.tournament:
             if st.button("Start New Tournament", key="new_tournament_button"):
+                logger.info("Starting new tournament")
                 st.session_state.tournament = None
                 st.session_state.tournament_name = "New Tournament"
                 st.session_state.players = []
@@ -594,6 +677,7 @@ def main():
                 st.session_state.loaded_id = None
                 st.rerun()
         elif selected_id and selected_id != st.session_state.loaded_id:
+            logger.info(f"Loading tournament ID {selected_id}")
             load_selected_tournament(selected_id)
             st.rerun()
         
@@ -601,6 +685,7 @@ def main():
             st.markdown("---")
             st.warning("PERMANENT ACTION")
             if st.button(f"Delete '{selected_display}'", key="delete_button", disabled=is_locked_bool):
+                logger.info(f"Attempting to delete tournament ID {selected_id}")
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted. Reloading page...")
                     if st.session_state.loaded_id == selected_id:
@@ -637,6 +722,7 @@ def main():
                     
                     st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
                     st.session_state.loaded_id = None
+                    logger.info(f"New tournament created: {st.session_state.tournament_name}")
                     st.success("Tournament created! All pairings generated. Scroll down to enter results.")
                     st.rerun()
 
