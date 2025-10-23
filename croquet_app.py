@@ -306,16 +306,30 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     if not players_list:
         raise ValueError("Tournament loaded but contains no players.")
 
-    num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
-    num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
-    
-    # Create the tournament object with the correct list size for rounds
-    tournament = SwissTournament(players_list, num_rounds) # Passes Player objects, skipping auto-generation
-    tournament.rounds = [[] for _ in range(num_rounds)] 
-    
+    # Get round and match data
     c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ? ORDER BY round_num, match_num", (tournament_id,))
     match_data = c.fetchall()
 
+    # Determine maximum round and max matches per round
+    max_round_num = -1
+    max_match_num_by_round = {}
+    
+    for r_num, m_num, _, _, _, _ in match_data:
+        max_round_num = max(max_round_num, r_num)
+        max_match_num_by_round[r_num] = max(max_match_num_by_round.get(r_num, -1), m_num)
+
+    num_rounds = max_round_num + 1 if max_round_num >= 0 else 1
+    
+    # Create the tournament object with the correct list size for rounds
+    tournament = SwissTournament(players_list, num_rounds) 
+    
+    # Initialize tournament.rounds with empty lists of the correct size, filled with None
+    tournament.rounds = []
+    for r_num in range(num_rounds):
+        num_matches = max_match_num_by_round.get(r_num, -1) + 1
+        tournament.rounds.append([None] * num_matches)
+    
+    # Populate matches safely
     for r_num, m_num, p1_id, p2_id, h1, h2 in match_data:
         p1 = player_map.get(p1_id)
         p2 = player_map.get(p2_id) if p2_id != -1 else None
@@ -326,22 +340,17 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
 
         # Restore opponents set, required for generating future rounds
         if p2 is not None:
-            # Only add opponent if both players exist
-            if p2 is not None:
-                p1.add_opponent(p2_id)
-                p2.add_opponent(p1_id)
+            p1.add_opponent(p2_id)
+            p2.add_opponent(p1_id)
 
         match = Match(p1, p2)
         match.result = (h1, h2)
         
-        # Ensure the round list is large enough
-        while len(tournament.rounds) <= r_num:
-            tournament.rounds.append([])
-            
-        if len(tournament.rounds[r_num]) <= m_num:
-             tournament.rounds[r_num].extend([None] * (m_num - len(tournament.rounds[r_num]) + 1))
-        
-        tournament.rounds[r_num][m_num] = match
+        # This assignment is now guaranteed to be safe because the lists were pre-sized.
+        if r_num < len(tournament.rounds) and m_num < len(tournament.rounds[r_num]):
+             tournament.rounds[r_num][m_num] = match
+        else:
+            st.error(f"Logic Error: Match {m_num} in Round {r_num} exceeded pre-allocated size.")
 
     conn.close()
     return tournament, tournament_name, num_rounds
@@ -892,7 +901,7 @@ def main():
             'Net Hoops', 'Hoops Scored', 'Hoops Conceded'
         ]
 
-        # FIX 1: Initialize df to a blank DataFrame using the defined columns.
+        # Initialize df to a blank DataFrame using the defined columns.
         df = pd.DataFrame(columns=column_names)
 
         # Check if the list of players is NOT empty
@@ -920,14 +929,15 @@ def main():
             if standings_data:
                 df = pd.DataFrame(standings_data)
             else:
-                # If 'standings' was not empty but all players were corrupt, 'df' remains the initialized empty DataFrame
+                # If 'standings' was not empty but all players were corrupt
                 st.info("No valid player data available for standings. Corrupted entries were skipped.")
         
         else:
             st.info("No player data available yet. Please create a tournament with players above.")
             
-        # This line is now safe because 'df' is always a valid DataFrame object (empty or full)
-        st.dataframe(df, use_container_width=True, index=False) 
+        # FIX: Only call st.dataframe if the resulting DataFrame has rows (prevents rendering crash on empty data)
+        if not df.empty:
+            st.dataframe(df, use_container_width=True, index=False) 
         # --------------------------------------------------------------------
         
         # --------------------------------------------------------------------
