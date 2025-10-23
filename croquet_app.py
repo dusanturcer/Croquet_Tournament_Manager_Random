@@ -145,7 +145,7 @@ class SwissTournament:
         return []
 
 # ----------------------------------------------------------------------
-# --- Database Functions ---
+# --- Database Functions (Unchanged) ---
 # ----------------------------------------------------------------------
 
 DB_PATH = 'tournament.db'
@@ -407,7 +407,7 @@ def load_selected_tournament(selected_id):
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     
-    # --- Custom CSS (Modified to fix visibility and button size) ---
+    # --- Custom CSS (MODIFIED) ---
     st.markdown("""
         <style>
         /* Green Button Styles (General Buttons) */
@@ -437,7 +437,7 @@ def main():
             border: 1px solid #388E3C !important;
         }
         
-        /* FIX 1: Make TYPED number visible (was transparent due to the next rule) */
+        /* FIX: Make TYPED number visible */
         div[data-baseweb="input"] input[type="number"] {
             color: black !important; 
             font-weight: bold;
@@ -448,15 +448,14 @@ def main():
             color: black !important; 
         }
         
-        /* FIX 2: Make the +/- buttons bigger by adjusting their container size */
+        /* FIX: Make the +/- buttons bigger */
         div[data-baseweb="input"] button {
              color: #4CAF50 !important;
-             /* Increase button/arrow area size */
              min-width: 30px !important; 
              padding: 5px !important;
         }
         
-        /* FIX 3: Increase the size of the arrows themselves (the content) */
+        /* FIX: Increase the size of the arrows themselves */
         div[data-baseweb="input"] button span {
             font-size: 1.2em !important; 
         }
@@ -464,6 +463,14 @@ def main():
         /* Ensure the form container doesn't reset button width */
         .stForm div[data-testid="stFormSubmitButton"] {
             width: 100%;
+        }
+
+        /* NEW: Highlight class for completed rounds */
+        .round-complete > div[data-testid="stExpander"] {
+            background-color: #E6F7E6; /* Light Green background */
+            border-left: 5px solid #4CAF50; /* Green border for emphasis */
+            border-radius: 5px;
+            padding: 5px;
         }
 
         </style>
@@ -480,7 +487,7 @@ def main():
         st.session_state.num_rounds = 3
         st.session_state.loaded_id = None # Tracks the ID of the currently loaded tournament
 
-    # --- Sidebar for Loading Saved Tournaments ---
+    # --- Sidebar for Loading Saved Tournaments (Unchanged) ---
     with st.sidebar:
         st.header("Load Saved Tournament")
         init_db()
@@ -543,7 +550,7 @@ def main():
                 else:
                     st.error("Failed to delete the tournament.")
 
-    # --- Main Content: Tournament Setup ---
+    # --- Main Content: Tournament Setup (Unchanged) ---
     if not st.session_state.tournament or not st.session_state.players:
         expander_state = True
     else:
@@ -572,7 +579,7 @@ def main():
                     st.success("Tournament created! All pairings generated. Scroll down to enter results.")
                     st.rerun() # Rerun to update the page structure
 
-    # --- Main Content: Tournament Management ---
+    # --- Main Content: Tournament Management (MODIFIED) ---
     if st.session_state.tournament:
         tournament = st.session_state.tournament
         
@@ -614,11 +621,23 @@ def main():
                 
                 if not non_bye_matches:
                     continue
+                
+                # Check if the round is complete based on stored results (not session state)
+                is_round_complete = all(m.result is not None for m in non_bye_matches)
 
                 round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
-                expanded_state = (round_num == 0) or (round_num < len(tournament.rounds) and any(m.result is None for m in non_bye_matches))
                 
-                with st.expander(round_label, expanded=expanded_state):
+                # Determine initial expansion state: expand incomplete/current round, collapse others
+                expanded_state = not is_round_complete and (round_num == len(tournament.rounds) - 1 or round_num == 0)
+
+                # Use st.container() to apply the CSS class before the expander
+                round_container = st.container()
+                
+                # Apply the highlight class if complete
+                if is_round_complete:
+                    round_container.markdown(f'<div class="round-complete">', unsafe_allow_html=True)
+                
+                with round_container.expander(round_label, expanded=expanded_state):
                     
                     match_col1, match_col2 = st.columns(2)
                     match_display_num = 1
@@ -684,6 +703,10 @@ def main():
                                     
                             current_match_col.markdown("---")
                             match_display_num += 1
+                
+                # Close the custom div if the round was complete
+                if is_round_complete:
+                    round_container.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown("---")
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
@@ -719,38 +742,43 @@ def main():
                     # This applies the score AND updates player stats
                     match.set_result(hoops1, hoops2)
 
-                # After updating results, regenerate pairings for the current round and any subsequent incomplete rounds
+                # After updating results, check for round completion and generate the next round if necessary
                 current_max_round = len(tournament.rounds)
                 
-                # Find the first incomplete round (if any)
+                # Find the first round that has incomplete matches after the update
                 next_round_to_generate = -1
+                all_rounds_complete = True
+                
                 for r_idx in range(current_max_round):
                     pairings = tournament.get_round_pairings(r_idx)
-                    # Check if any non-bye match has no result
-                    if any(m.result is None for m in pairings if m and m.player2):
-                        # The current round is incomplete, no need to generate
-                        next_round_to_generate = -1 
-                        break
+                    non_bye_matches = [m for m in pairings if m and m.player2]
                     
-                    if r_idx == current_max_round - 1:
-                        # The last existing round is complete, so generate the next one
-                        next_round_to_generate = current_max_round 
+                    # Check if the round is now fully complete (no match.result is None)
+                    if any(m.result is None for m in non_bye_matches):
+                        # An existing round is incomplete, stop checking
+                        all_rounds_complete = False
+                        break
                 
-                # Handle the case where the tournament object has no rounds yet (if saved instantly)
+                if all_rounds_complete and current_max_round < tournament.num_rounds:
+                    next_round_to_generate = current_max_round
+                
+                # Handle the initial case if the update button was pressed before any rounds were recorded
                 if current_max_round == 0 and tournament.num_rounds > 0:
                      next_round_to_generate = 0
 
-                # Generate the new round if we haven't reached the max rounds
+                # Generate the new round
                 if next_round_to_generate != -1 and next_round_to_generate < tournament.num_rounds:
                     tournament.generate_round_pairings(next_round_to_generate, initial=False)
                     st.success(f"Round {next_round_to_generate + 1} pairings generated based on new standings.")
                     # Re-run to update the form structure with the new round
                     st.rerun()
 
-                st.success("All visible match results updated! Standings recalculated.")
+                st.success("All match results processed! Standings recalculated.")
+                # Always rerun after an update to show the highlight immediately
+                st.rerun()
 
 
-        # --- Standings ---
+        # --- Standings (Unchanged) ---
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         standings_data = [{
@@ -763,7 +791,7 @@ def main():
         } for i, p in enumerate(standings)]
         st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
 
-        # --- Save and Export ---
+        # --- Save and Export (Unchanged) ---
         st.subheader("Save and Export")
         
         col_save, col_export1, col_export2 = st.columns(3)
