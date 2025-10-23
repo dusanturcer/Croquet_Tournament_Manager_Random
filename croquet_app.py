@@ -235,7 +235,6 @@ def export_to_excel(tournament, tournament_name):
 def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
-    # Use a single number input field
     st.number_input(
         label, # Empty label to save space
         min_value=min_value,
@@ -295,6 +294,7 @@ def main():
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
                 if match.player2 is not None:
+                    # Use the match_num from the pairings list, which is unique
                     hoops1_key = f"hoops1_r{round_num}_m{match_num}"
                     hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                     input1_key = f"{hoops1_key}_input"
@@ -318,7 +318,6 @@ def main():
             # Filter non-BYE matches
             non_bye_matches = [match for match in round_pairings if match.player2 is not None]
             
-            # If no competitive matches, skip the expander entirely.
             if not non_bye_matches:
                 continue
 
@@ -330,42 +329,49 @@ def main():
                 # Create two main columns for matches
                 match_col1, match_col2 = st.columns(2)
                 
+                # Use a counter for display numbering
                 match_display_num = 1
                 
+                # Iterate through the non-BYE matches only
                 for i, match in enumerate(round_pairings):
                     if match.player2 is None:
-                        # Skip all BYE matches entirely
                         continue 
                         
                     # Determine which column to place the match in
                     current_match_col = match_col1 if i % 2 == 0 else match_col2
                     
                     with current_match_col:
-                        # Use the original key roots generated in the synchronization block
-                        hoops1_key = f"hoops1_r{round_num}_m{match_num}"
-                        hoops2_key = f"hoops2_r{round_num}_m{match_num}"
+                        # Find the original match_num to reconstruct the correct keys
+                        # Note: This is safe because we use the full match list index `match_num` from score_keys_to_update
+                        # even though we are looping over the non-BYE matches now.
+                        match_info = next(info for r, m, k1, k2 in score_keys_to_update if r == round_num and m == round_pairings.index(match))
+                        
+                        # Reconstruct the keys using the original match_num
+                        hoops1_key = match_info[2]
+                        hoops2_key = match_info[3]
                         
                         # Layout: Match # | P1 Name | P1 Input | P2 Input | P2 Name | Status
+                        # Adjusted column widths for better spacing without buttons
                         col_num, col_p1, col_h1, col_h2, col_p2, col_status = st.columns([0.5, 2, 1, 1, 2, 1.5])
                         
                         with col_num:
                             st.markdown(f"**{match_display_num}:**")
                             
                         with col_p1:
-                            st.subheader(match.player1.name)
+                            # Using markdown with large font size
+                            st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_h1:
                             # Use number_input_simple (no buttons)
                             number_input_simple(key=hoops1_key)
-                            
-                        # Removed the "vs" column for more space
                         
                         with col_h2:
                             # Use number_input_simple (no buttons)
                             number_input_simple(key=hoops2_key)
                         
                         with col_p2:
-                            st.subheader(match.player2.name)
+                            # Using markdown with large font size
+                            st.markdown(f"**<h4 style='text-align: left;'>{match.player2.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_status:
                             # Instant Score Marking Logic
@@ -384,7 +390,7 @@ def main():
                             elif live_hoops1 == live_hoops2 and (live_hoops1 > 0):
                                 status_delta = "Draw (0 pts)"
                             else:
-                                status_delta = " " # Empty delta if 0-0
+                                status_delta = " "
 
                             st.metric(label="Score", value=status_text, delta=status_delta)
                                 
@@ -395,31 +401,26 @@ def main():
         # --- The Submission Form (Unchanged) ---
         with st.form("results_submission_form"):
             st.markdown("---")
-            st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
+            results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
             # Recalculation logic
-            for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
-                match = tournament.get_round_pairings(round_num)[match_num]
-                
-                hoops1_key = f"{hoops1_key_root}_input"
-                hoops2_key = f"{hoops2_key_root}_input"
-                
-                hoops1 = st.session_state.get(hoops1_key, 0)
-                hoops2 = st.session_state.get(hoops2_key, 0)
-                
-                # Check for updates only if the form was submitted
-                if st.session_state.get("results_submission_form", False):
+            if results_submitted:
+                for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
+                    match = tournament.get_round_pairings(round_num)[match_num]
+                    
+                    hoops1_key = f"{hoops1_key_root}_input"
+                    hoops2_key = f"{hoops2_key_root}_input"
+                    
+                    hoops1 = st.session_state.get(hoops1_key, 0)
+                    hoops2 = st.session_state.get(hoops2_key, 0)
+                    
                     if hoops1 == hoops2 and match.player2 is not None:
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
                         
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
 
-            if st.session_state.get("results_submission_form", False):
                 st.success("All visible match results updated! Standings recalculated.")
-                # Reset the form state key manually, as form submission automatically sets the button state
-                # but we use a key check here for consistency.
-                st.session_state["results_submission_form"] = False 
 
         # --- Standings (Unchanged) ---
         st.subheader("Current Standings 🏆")
