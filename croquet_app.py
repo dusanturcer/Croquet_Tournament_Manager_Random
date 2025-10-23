@@ -616,7 +616,7 @@ def main():
         if selected_id:
             st.markdown("---")
             st.warning("PERMANENT ACTION")
-            if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button", disabled=is_locked_bool):
+            if st.button(f"Delete '{selected_display}'", key="delete_button", disabled=is_locked_bool):
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted. Reloading page...")
                     st.session_state.tournament = None
@@ -776,7 +776,7 @@ def main():
         with st.form("results_submission_form"):
             st.markdown("---")
             # DISABLE THE SUBMIT BUTTON IF LOCKED
-            results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings", disabled=is_locked_bool)
+            results_submitted = st.form_submit_button("Recalculate Standings", disabled=is_locked_bool)
             st.markdown("---")
             
             if results_submitted:
