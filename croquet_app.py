@@ -454,7 +454,7 @@ def main():
     
     st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
 
-    # Initialize state variables
+    # Initialize ALL state variables at the start (FIXED THE AttributeError HERE)
     if 'tournament' not in st.session_state:
         st.session_state.tournament = None
         st.session_state.tournament_name = "New Tournament"
@@ -476,7 +476,7 @@ def main():
         
         # Determine the correct default index for the selectbox
         default_index = 0
-        current_loaded_id = st.session_state.loaded_id
+        current_loaded_id = st.session_state.loaded_id 
         
         if current_loaded_id is not None:
             for idx, (t_id, display_name) in enumerate(tournaments_list):
@@ -705,7 +705,6 @@ def main():
                 save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
                 st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
-                # The st.cache_data.clear() call in save_to_db ensures other sessions will reload the list.
                 # Rerunning here reloads the list for the current session and updates the sidebar selection state.
                 st.rerun()
 
