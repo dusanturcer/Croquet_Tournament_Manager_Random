@@ -144,6 +144,18 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
+    # New method to count total non-BYE games played by a player
+    def get_games_played(self, player_id):
+        count = 0
+        for round_pairings in self.rounds:
+            for match in round_pairings:
+                if match and match.result is not None:
+                    if match.player1.id == player_id and match.player2 is not None:
+                        count += 1
+                    elif match.player2 and match.player2.id == player_id:
+                        count += 1
+        return count
+
 # ----------------------------------------------------------------------
 # --- Database Functions (Unchanged) ---
 # ----------------------------------------------------------------------
@@ -841,18 +853,25 @@ def main():
 
 
         # --------------------------------------------------------------------
-        # --- Standings (Unchanged) ---
+        # --- Standings (Modified) ---
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
+        
+        # --- MODIFIED STANDINGS DATA GENERATION ---
         standings_data = [{
-            'Rank': i+1,
+            # 'Rank' is intentionally excluded
             'Name': p.name,
+            'Games Played': tournament.get_games_played(p.id), # NEW COLUMN
             'Wins': p.wins,
             'Points': p.points,
             'Net Hoops': p.hoops_scored - p.hoops_conceded,
-            'Hoops Scored': p.hoops_scored
-        } for i, p in enumerate(standings)]
+            'Hoops Scored': p.hoops_scored,
+            'Hoops Conceded': p.hoops_conceded # NEW COLUMN at the end
+        } for p in standings]
+        
+        # Display the modified DataFrame
         st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
+        # --------------------------------------------------------------------
         
         # --------------------------------------------------------------------
         # --- Save and Export (Disabled if Locked) ---
