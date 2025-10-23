@@ -285,7 +285,10 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     c = conn.cursor()
 
     c.execute("SELECT name FROM tournaments WHERE id = ?", (tournament_id,))
-    tournament_name = c.fetchone()[0]
+    tournament_name_data = c.fetchone()
+    if not tournament_name_data:
+         raise ValueError(f"Tournament with ID {tournament_id} not found.")
+    tournament_name = tournament_name_data[0]
 
     c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id = ? ORDER BY player_id", (tournament_id,))
     player_data = c.fetchall()
@@ -300,6 +303,8 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         player_map[p_id] = player
         
     players_list = list(player_map.values())
+    if not players_list:
+        raise ValueError("Tournament loaded but contains no players.")
 
     num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
     num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
@@ -315,7 +320,9 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         p1 = player_map.get(p1_id)
         p2 = player_map.get(p2_id) if p2_id != -1 else None
         
-        if p1 is None: continue
+        if p1 is None: 
+            st.warning(f"Skipping match in round {r_num+1} due to missing player1 (ID: {p1_id}).")
+            continue
 
         # Restore opponents set, required for generating future rounds
         if p2 is not None:
@@ -471,9 +478,15 @@ def load_selected_tournament(selected_id):
             st.success(f"Tournament '{tournament_name}' loaded successfully.")
             
         except Exception as e:
-            st.error(f"Error loading tournament data: {e}")
+            # FIX: Reset ALL tournament state on failure and force a rerun to the setup screen
+            st.error(f"Error loading tournament data: {e}. Resetting to 'New Tournament'.")
             st.session_state.tournament = None
+            st.session_state.tournament_name = "New Tournament"
+            st.session_state.players = []
+            st.session_state.num_rounds = 3
             st.session_state.loaded_id = None
+            # Force rerun to show the setup screen and prevent further execution with corrupted state
+            st.rerun() 
 
 # Callback function to set the flag and trigger the main script's rerun
 def handle_lock_change():
@@ -630,7 +643,8 @@ def main():
         # Action: Load/Re-load Selected Tournament
         elif selected_id and selected_id != st.session_state.loaded_id:
             load_selected_tournament(selected_id)
-            st.rerun()
+            # Rerunning is handled inside load_selected_tournament on success/failure
+            pass
 
         # Action: Delete Tournament
         if selected_id:
@@ -863,8 +877,13 @@ def main():
         # --------------------------------------------------------------------
         # --- Standings (Corrected to show Rank and hide Index) ---
         st.subheader("Current Standings 🏆")
-        standings = tournament.get_standings()
         
+        # Ensure 'tournament' is valid before calling get_standings
+        if tournament:
+            standings = tournament.get_standings()
+        else:
+            standings = []
+            
         # Define the expected columns for the DataFrame
         column_names = [
             'Rank', 'Name', 'Games Played', 'Wins', 'Points', 
@@ -877,6 +896,7 @@ def main():
             standings_data = [{
                 'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
                 'Name': p.name,
+                # THIS IS THE LINE WHERE A FAILURE ON A CORRUPT PLAYER OBJECT WOULD CRASH:
                 'Games Played': tournament.get_games_played(p.id),
                 'Wins': p.wins,
                 'Points': p.points,
