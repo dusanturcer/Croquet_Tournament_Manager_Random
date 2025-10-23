@@ -454,10 +454,11 @@ def load_selected_tournament(selected_id):
             st.error(f"Error loading tournament data: {e}")
             st.session_state.tournament = None
             st.session_state.loaded_id = None
-            
+
+# FIX: Use st.rerun() instead of the deprecated st.experimental_rerun()
 def lock_state_change():
     """Forces a rerun when the lock status is changed."""
-    st.experimental_rerun()
+    st.rerun() 
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
