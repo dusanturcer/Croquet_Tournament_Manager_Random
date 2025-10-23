@@ -68,8 +68,14 @@ class SwissTournament:
                 initial = (round_num == 0)
                 self.generate_round_pairings(round_num, initial=initial) 
         else:
-            # WHEN LOADING, just set the players and wait for rounds to be loaded from DB
-            self.players = players_names_or_objects
+            # FIX: Sanitize the incoming player list immediately upon loading
+            original_len = len(players_names_or_objects)
+            self.players = [p for p in players_names_or_objects if isinstance(p, Player)]
+            
+            # Report if data was lost on load
+            if len(self.players) < original_len:
+                 st.error(f"FATAL CORRUPTION DETECTED on load: Removed {original_len - len(self.players)} corrupt objects from tournament player list.")
+                 
             self.rounds = [] 
             
         self.num_rounds = num_rounds
@@ -334,7 +340,8 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
 
     num_rounds = max_round_num + 1 if max_round_num >= 0 else 1
     
-    # Create the tournament object with the correct list size for rounds
+    # Create the tournament object with the correct list size for rounds. 
+    # The SwissTournament __init__ will now sanitize the players_list again.
     tournament = SwissTournament(players_list, num_rounds) 
     
     # Initialize tournament.rounds with empty lists of the correct size, filled with None
@@ -498,7 +505,8 @@ def load_selected_tournament(selected_id):
             st.session_state.tournament = tournament
             st.session_state.tournament_name = tournament_name
             st.session_state.num_rounds = num_rounds
-            st.session_state.players = [p.name for p in tournament.players]
+            # FIX: Ensure players list in session state is clean after load
+            st.session_state.players = [p.name for p in tournament.players] 
             st.session_state.loaded_id = selected_id # Store the ID of the currently loaded tournament
             st.success(f"Tournament '{tournament_name}' loaded successfully.")
             
@@ -840,8 +848,9 @@ def main():
             
             if results_submitted:
                 
-                # Reset all player stats before reapplying scores
-                # This loop is safe because the standings logic now sanitizes self.players
+                # Reset all player stats before reapplying scores.
+                # This loop is safe because the get_standings logic (called just before this submission, on the previous rerun) 
+                # has already sanitized the players list in the session state.
                 for p in tournament.players:
                     p.points = 0
                     p.wins = 0
@@ -926,7 +935,7 @@ def main():
             # --- STANDINGS DATA GENERATION (FIXED FOR ROBUSTNESS) ---
             standings_data = []
             for i, p in enumerate(standings):
-                # This check is now mostly redundant but safe (the main sanitization is in get_standings)
+                # This check is now safe because the main sanitization is in get_standings
                 if not isinstance(p, Player):
                     st.error(f"Error: Non-Player object found in standings list. Skipping entry.")
                     continue
@@ -971,7 +980,7 @@ def main():
                 conn.close()
                 if tournament_id:
                     st.session_state.loaded_id = tournament_id
-                    st.success(f"Tournament '{st.session_state.tournament_name}' saved to database! (Corrupted data was removed before save)")
+                    st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
                     st.rerun()
 
         with col_export1:
