@@ -407,7 +407,7 @@ def load_selected_tournament(selected_id):
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     
-    # --- Custom CSS (Modified to remove unreliable highlight CSS, keeping button/input fixes) ---
+    # --- Custom CSS (For aesthetics and the green text) ---
     st.markdown("""
         <style>
         /* Green Button Styles (General Buttons) */
@@ -465,7 +465,7 @@ def main():
             width: 100%;
         }
         
-        /* CSS for the success text */
+        /* CSS for the success text (the requested green font) */
         .round-complete-text {
             color: #4CAF50; /* Green color */
             font-weight: bold;
@@ -622,8 +622,9 @@ def main():
                 if not non_bye_matches:
                     continue
                 
-                # Check if the round is complete based on stored results (match.result != None)
-                is_round_complete = all(m.result is not None for m in non_bye_matches)
+                # REVISED LOGIC: Check if ALL matches have at least one non-zero score recorded.
+                # sum(m.get_scores()) > 0 checks if hoops1 + hoops2 > 0.
+                is_round_complete = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
 
                 round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
                 
@@ -697,7 +698,7 @@ def main():
                             current_match_col.markdown("---")
                             match_display_num += 1
                 
-                # --- NEW: Display completion text outside the expander ---
+                # --- Show completion text if the round is complete based on the new logic ---
                 if is_round_complete:
                     st.markdown('<p class="round-complete-text">✅ All games played for this round</p>', unsafe_allow_html=True)
                 # --------------------------------------------------------
@@ -741,7 +742,7 @@ def main():
                 
                 # Find the first round that has incomplete matches after the update
                 next_round_to_generate = -1
-                all_rounds_complete = True
+                all_rounds_complete_for_gen = True
                 
                 for r_idx in range(current_max_round):
                     pairings = tournament.get_round_pairings(r_idx)
@@ -750,10 +751,11 @@ def main():
                     # Check if the round is now fully complete (no match.result is None)
                     if any(m.result is None for m in non_bye_matches):
                         # An existing round is incomplete, stop checking
-                        all_rounds_complete = False
+                        all_rounds_complete_for_gen = False
                         break
                 
-                if all_rounds_complete and current_max_round < tournament.num_rounds:
+                # Only generate the next round if ALL PREVIOUS rounds are fully recorded (match.result is not None)
+                if all_rounds_complete_for_gen and current_max_round < tournament.num_rounds:
                     next_round_to_generate = current_max_round
                 
                 # Handle the initial case if the update button was pressed before any rounds were recorded
