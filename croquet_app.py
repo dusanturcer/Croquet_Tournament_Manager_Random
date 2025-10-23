@@ -144,7 +144,7 @@ class SwissTournament:
         return []
 
 # ----------------------------------------------------------------------
-# --- Database Functions (Modified) ---
+# --- Database Functions ---
 # ----------------------------------------------------------------------
 
 DB_PATH = 'tournament.db'
@@ -205,16 +205,12 @@ def save_to_db(tournament, tournament_name, conn):
         conn.rollback() 
 
 def delete_tournament_from_db(tournament_id, db_path=DB_PATH):
-    """Deletes a tournament and all associated data."""
     try:
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         
-        # Delete related data first
         c.execute("DELETE FROM players WHERE tournament_id = ?", (tournament_id,))
         c.execute("DELETE FROM matches WHERE tournament_id = ?", (tournament_id,))
-        
-        # Delete the tournament entry
         c.execute("DELETE FROM tournaments WHERE id = ?", (tournament_id,))
         
         conn.commit()
@@ -300,7 +296,8 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
     conn.close()
     return tournament, tournament_name, num_rounds
 
-# --- Export Functions (Complete - Omitted here for brevity, included in main) ---
+# --- Export Functions (Complete - Omitted for brevity) ---
+
 def export_to_csv(tournament, tournament_name):
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -386,16 +383,20 @@ def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
 
+    # Initialize state variables
     if 'tournament' not in st.session_state:
         st.session_state.tournament = None
         st.session_state.tournament_name = "New Tournament"
         st.session_state.players = []
         st.session_state.num_rounds = 3
+        st.session_state.tournament_list_refreshed = False # Flag to track if the list needs a refresh
 
     # --- Sidebar for Loading Saved Tournaments ---
     with st.sidebar:
         st.header("Load Saved Tournament")
         init_db()
+        
+        # Load the list of tournaments (this runs on every rerun)
         tournaments_list = load_tournaments_list()
         
         display_list = ["--- New Tournament ---"] + [t[1] for t in tournaments_list]
@@ -444,7 +445,7 @@ def main():
             if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button"):
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted.")
-                    # Reset state to force a fresh start and UI redraw
+                    # Force rerun to immediately refresh the sidebar list
                     st.session_state.tournament = None
                     st.session_state.tournament_name = "New Tournament"
                     st.rerun()
@@ -620,11 +621,15 @@ def main():
         col_save, col_export1, col_export2 = st.columns(3)
 
         with col_save:
+            # Modified Save Block
             if st.button("Save Tournament to Database (Overwrites existing name)"):
                 conn = init_db()
                 save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
-                st.success(f"Tournament '{st.session_state.tournament_name}' saved to database! Reload the page or check the sidebar to see the update.")
+                st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
+                # Force rerun to reload the sidebar list immediately
+                st.session_state.tournament_list_refreshed = True 
+                st.rerun()
 
         with col_export1:
             if st.button("Generate CSV"):
