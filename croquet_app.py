@@ -372,11 +372,13 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
     # 1. Get current score. If it's 0, set the display value to an empty string.
+    # The session state stores the integer value (0 for empty/invalid input).
     current_value = st.session_state.get(input_key, 0)
     display_value = "" if current_value == 0 else str(current_value)
 
     # 2. Use st.text_input instead of st.number_input
-    # The 'type="text"' here is for compatibility, but we use input_type="text"
+    # IMPORTANT: The on_change callback is what caused the original error inside st.form.
+    # Since we are calling this function OUTSIDE the form now, it is safe.
     text_value = st.text_input(
         label,
         value=display_value,
@@ -393,7 +395,10 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
 
 def _update_session_state_to_int(key, min_value, max_value):
     """Callback function to convert the text input to a clean integer."""
-    raw_value = st.session_state[key].strip()
+    raw_value = st.session_state[key]
+    
+    if isinstance(raw_value, str):
+        raw_value = raw_value.strip()
     
     if not raw_value:
         st.session_state[key] = 0
@@ -604,7 +609,7 @@ def main():
         
         st.header(f"Active Tournament: {st.session_state.tournament_name}")
 
-        # --- Match Results & Pairing Display ---
+        # --- Match Results & Pairing Display (Inputs now OUTSIDE the form) ---
         st.subheader("Match Results & Input")
         
         score_keys_to_update = [] 
@@ -631,99 +636,92 @@ def main():
                         
                     score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
-        # Display the matches in the form
-        with st.form("results_submission_form"):
+        # RENDER INPUTS (OUTSIDE THE FORM)
+        for round_num in range(tournament.num_rounds):
+            round_pairings = tournament.get_round_pairings(round_num)
             
-            for round_num in range(tournament.num_rounds):
-                round_pairings = tournament.get_round_pairings(round_num)
-                
-                non_bye_matches = [match for match in round_pairings if match and match.player2 is not None]
-                
-                if not non_bye_matches:
-                    continue
-                
-                # REVISED LOGIC: Check if ALL matches have at least one non-zero score recorded.
-                # sum(m.get_scores()) > 0 checks if hoops1 + hoops2 > 0.
-                is_round_complete = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
+            non_bye_matches = [match for match in round_pairings if match and match.player2 is not None]
+            
+            if not non_bye_matches:
+                continue
+            
+            # Check if ALL matches have at least one non-zero score recorded.
+            is_round_complete = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
 
-                round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
-                
-                # Determine initial expansion state: expand incomplete/current round, collapse others
-                expanded_state = not is_round_complete and (round_num == len(tournament.rounds) - 1 or round_num == 0)
+            round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
+            
+            # Determine initial expansion state: expand incomplete/current round, collapse others
+            expanded_state = not is_round_complete and (round_num == len(tournament.rounds) - 1 or round_num == 0)
 
-                with st.expander(round_label, expanded=expanded_state):
-                    
-                    match_col1, match_col2 = st.columns(2)
-                    match_display_num = 1
-                    
-                    for i, match in enumerate(round_pairings):
-                        if match is None or match.player2 is None:
-                            continue 
-                            
-                        current_match_col = match_col1 if match_display_num % 2 != 0 else match_col2
+            with st.expander(round_label, expanded=expanded_state):
+                
+                match_col1, match_col2 = st.columns(2)
+                match_display_num = 1
+                
+                for i, match in enumerate(round_pairings):
+                    if match is None or match.player2 is None:
+                        continue 
                         
-                        # Find the correct keys for this match
-                        try:
-                            match_info = next((r, m, k1, k2) 
-                                            for r, m, k1, k2 in score_keys_to_update 
-                                            if r == round_num and m == round_pairings.index(match))
-                        except StopIteration:
-                            continue
+                    current_match_col = match_col1 if match_display_num % 2 != 0 else match_col2
+                    
+                    # Find the correct keys for this match
+                    try:
+                        match_info = next((r, m, k1, k2) 
+                                        for r, m, k1, k2 in score_keys_to_update 
+                                        if r == round_num and m == round_pairings.index(match))
+                    except StopIteration:
+                        continue
 
-                        hoops1_key = match_info[2]
-                        hoops2_key = match_info[3]
+                    hoops1_key = match_info[2]
+                    hoops2_key = match_info[3]
+                    
+                    with current_match_col:
                         
-                        with current_match_col:
+                        col_num, col_p1, col_h1, col_h2, col_p2, col_status = st.columns([0.5, 2, 1, 1, 2, 1.5])
+                        
+                        with col_num:
+                            st.markdown(f"**{match_display_num}:**")
                             
-                            col_num, col_p1, col_h1, col_h2, col_p2, col_status = st.columns([0.5, 2, 1, 1, 2, 1.5])
+                        with col_p1:
+                            st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
-                            with col_num:
-                                st.markdown(f"**{match_display_num}:**")
-                                
-                            with col_p1:
-                                st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
-                                
-                            with col_h1:
-                                # Input component automatically updates session state
-                                number_input_simple(key=hoops1_key)
+                        with col_h1:
+                            # Input component now updates session state instantly via callback
+                            live_hoops1 = number_input_simple(key=hoops1_key)
+                        
+                        with col_h2:
+                            live_hoops2 = number_input_simple(key=hoops2_key)
+                        
+                        with col_p2:
+                            st.markdown(f"**<h4 style='text-align: left;'>{match.player2.name}</h4>**", unsafe_allow_html=True)
                             
-                            with col_h2:
-                                number_input_simple(key=hoops2_key)
+                        with col_status:
                             
-                            with col_p2:
-                                st.markdown(f"**<h4 style='text-align: left;'>{match.player2.name}</h4>**", unsafe_allow_html=True)
+                            if live_hoops1 == 0 and live_hoops2 == 0:
+                                status_text = " - " 
+                                status_delta = " "
+                            else:
+                                status_text = f"{live_hoops1} - {live_hoops2}"
                                 
-                            with col_status:
-                                input1_key = f"{hoops1_key}_input"
-                                input2_key = f"{hoops2_key}_input"
-                                
-                                # Retrieve the cleaned integer values from the session state
-                                live_hoops1 = st.session_state.get(input1_key, 0)
-                                live_hoops2 = st.session_state.get(input2_key, 0)
+                                if live_hoops1 > live_hoops2:
+                                    status_delta = "P1 Wins"
+                                elif live_hoops2 > live_hoops1:
+                                    status_delta = "P2 Wins"
+                                else: 
+                                    status_delta = "Draw (0 pts)"
 
-                                if live_hoops1 == 0 and live_hoops2 == 0:
-                                    status_text = " - " 
-                                    status_delta = " "
-                                else:
-                                    status_text = f"{live_hoops1} - {live_hoops2}"
-                                    
-                                    if live_hoops1 > live_hoops2:
-                                        status_delta = "P1 Wins"
-                                    elif live_hoops2 > live_hoops1:
-                                        status_delta = "P2 Wins"
-                                    else: 
-                                        status_delta = "Draw (0 pts)"
+                            st.metric(label="Score", value=status_text, delta=status_delta)
+                                
+                        current_match_col.markdown("---")
+                        match_display_num += 1
+            
+            # Show completion text if the round is complete 
+            if is_round_complete:
+                st.markdown('<p class="round-complete-text">✅ All games played for this round</p>', unsafe_allow_html=True)
+            # --------------------------------------------------------
 
-                                st.metric(label="Score", value=status_text, delta=status_delta)
-                                    
-                            current_match_col.markdown("---")
-                            match_display_num += 1
-                
-                # --- Show completion text if the round is complete based on the new logic ---
-                if is_round_complete:
-                    st.markdown('<p class="round-complete-text">✅ All games played for this round</p>', unsafe_allow_html=True)
-                # --------------------------------------------------------
-
+        # SUBMISSION FORM (ONLY CONTAINS THE BUTTON)
+        with st.form("results_submission_form"):
             st.markdown("---")
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
@@ -737,7 +735,7 @@ def main():
                     p.hoops_scored = 0
                     p.hoops_conceded = 0
                 
-                # Reapply results using the values from session state
+                # Reapply results using the values from session state (which were updated by the inputs above)
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
@@ -771,10 +769,7 @@ def main():
                     pairings = tournament.get_round_pairings(r_idx)
                     non_bye_matches = [m for m in pairings if m and m.player2]
                     
-                    # Check if the round is now fully complete (no match.result is None)
-                    # We check for None here because if the result is (0, 0), it means it was explicitly
-                    # set to zero and the round shouldn't be considered incomplete for generation purposes, 
-                    # but if it's None, it means the match wasn't even attempted to be scored.
+                    # Check if the round is now fully recorded (match.result is not None)
                     if any(m.result is None for m in non_bye_matches):
                         # An existing round is incomplete, stop checking
                         all_rounds_complete_for_gen = False
@@ -796,10 +791,11 @@ def main():
                     st.rerun()
 
                 st.success("All match results processed! Standings recalculated.")
-                # Always rerun after an update to show the completion text immediately
+                # Always rerun after an update to refresh all UI components
                 st.rerun()
 
 
+        # --------------------------------------------------------------------
         # --- Standings (Unchanged) ---
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
@@ -812,7 +808,8 @@ def main():
             'Hoops Scored': p.hoops_scored
         } for i, p in enumerate(standings)]
         st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
-
+        
+        # --------------------------------------------------------------------
         # --- Save and Export (Unchanged) ---
         st.subheader("Save and Export")
         
