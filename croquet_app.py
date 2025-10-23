@@ -102,8 +102,6 @@ class SwissTournament:
                 p1.add_opponent(best_p2.id)
                 best_p2.add_opponent(p1.id)
             
-            # ... (BYE logic removed for brevity but present in original)
-            
         remaining_players = [p for p in available_players if p.id not in used_players]
         if remaining_players:
             bye_player = remaining_players[0]
@@ -399,7 +397,8 @@ def _update_session_state_to_int(text_key, result_key, min_value, max_value):
             st.session_state[result_key] = 0
             
 # Updated number_input_simple function
-def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
+# ADDED: disabled parameter
+def number_input_simple(key, min_value=0, max_value=26, step=1, label="", disabled=False):
     
     # Define two separate keys: one for the raw string input, one for the clean integer result
     text_key = f"{key}_text" 
@@ -409,11 +408,9 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     current_value_int = st.session_state.get(result_key, 0)
     
     # 2. Determine the string to DISPLAY in the box. 
-    # This must be a string. We use the stored integer result to decide if the box should be empty.
     if text_key not in st.session_state or st.session_state[text_key] == "":
         display_value = "" if current_value_int == 0 else str(current_value_int)
     else:
-        # If the user is actively typing, let the raw string from the session state persist
         display_value = st.session_state[text_key]
 
 
@@ -424,6 +421,9 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
         max_chars=2, 
         key=text_key, # This key stores the raw string input (must be a string)
         help="Enter score. Max 26.",
+        
+        # Pass the disabled status here
+        disabled=disabled,
         
         # Callback updates the separate result_key (must store an int)
         on_change=lambda: _update_session_state_to_int(text_key, result_key, min_value, max_value)
@@ -516,16 +516,34 @@ def main():
     
     st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
 
-    # Initialize ALL state variables at the start (FIX for AttributeError)
+    # Initialize ALL state variables at the start 
     if 'tournament' not in st.session_state:
         st.session_state.tournament = None
         st.session_state.tournament_name = "New Tournament"
         st.session_state.players = []
         st.session_state.num_rounds = 3
-        st.session_state.loaded_id = None # Tracks the ID of the currently loaded tournament
+        st.session_state.loaded_id = None 
+    
+    # Initialize the new lock state
+    if 'is_locked' not in st.session_state:
+        st.session_state.is_locked = "Unlocked"
+    
+    # Convert radio button selection to boolean for logic
+    is_locked_bool = (st.session_state.is_locked == "Locked")
 
-    # --- Sidebar for Loading Saved Tournaments (Unchanged) ---
+    # --- Sidebar for Loading Saved Tournaments and LOCK BUTTON ---
     with st.sidebar:
+        st.header("App Status")
+        
+        # New Radio Button for Locking the app
+        st.session_state.is_locked = st.radio(
+            "Tournament Input Status",
+            ["Unlocked", "Locked"],
+            key="lock_radio",
+            horizontal=True,
+            help="**Locked** prevents entry of scores and submission of results on this device."
+        )
+        
         st.header("Load Saved Tournament")
         init_db()
         
@@ -557,7 +575,7 @@ def main():
         
         # --- Logic for handling the selection ---
         
-        # Action: Start New Tournament
+        # Action: Start New Tournament (This should always be allowed)
         if selected_display == "--- New Tournament ---":
             if st.session_state.tournament and st.session_state.loaded_id is not None:
                 if st.button("Start New Tournament", key="new_tournament_button"):
@@ -577,7 +595,7 @@ def main():
         if selected_id:
             st.markdown("---")
             st.warning("PERMANENT ACTION")
-            if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button"):
+            if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button", disabled=is_locked_bool):
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted. Reloading page...")
                     st.session_state.tournament = None
@@ -587,7 +605,7 @@ def main():
                 else:
                     st.error("Failed to delete the tournament.")
 
-    # --- Main Content: Tournament Setup (Unchanged) ---
+    # --- Main Content: Tournament Setup (Disabled if Locked) ---
     if not st.session_state.tournament or not st.session_state.players:
         expander_state = True
     else:
@@ -595,10 +613,11 @@ def main():
         
     with st.expander("Create/Setup Tournament", expanded=expander_state):
         with st.form("tournament_form_setup"):
-            st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name)
-            player_input = st.text_area("Enter player names (one per line)", "\n".join(st.session_state.players))
-            st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds, step=1)
-            submitted = st.form_submit_button("Create Tournament")
+            # DISABLE SETUP INPUTS IF LOCKED
+            st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name, disabled=is_locked_bool)
+            player_input = st.text_area("Enter player names (one per line)", "\n".join(st.session_state.players), disabled=is_locked_bool)
+            st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds, step=1, disabled=is_locked_bool)
+            submitted = st.form_submit_button("Create Tournament", disabled=is_locked_bool)
 
             if submitted and st.session_state.tournament_name and player_input:
                 st.session_state.players = [name.strip() for name in player_input.split('\n') if name.strip()]
@@ -642,7 +661,6 @@ def main():
                     current_hoops1, current_hoops2 = match.get_scores()
                     
                     # Initialize Streamlit session state with current DB values (as integers)
-                    # We only need to initialize the RESULT key with the DB value.
                     if result1_key not in st.session_state:
                         st.session_state[result1_key] = current_hoops1
                     
@@ -660,12 +678,10 @@ def main():
             if not non_bye_matches:
                 continue
             
-            # Check if ALL matches have at least one non-zero score recorded (using clean results from the Match object).
             is_round_complete = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
 
             round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
             
-            # Determine initial expansion state: expand incomplete/current round, collapse others
             expanded_state = not is_round_complete and (round_num == len(tournament.rounds) - 1 or round_num == 0)
 
             with st.expander(round_label, expanded=expanded_state):
@@ -679,7 +695,6 @@ def main():
                         
                     current_match_col = match_col1 if match_display_num % 2 != 0 else match_col2
                     
-                    # Find the correct keys for this match
                     try:
                         match_info = next((r, m, k1, k2) 
                                         for r, m, k1, k2 in score_keys_to_update 
@@ -689,10 +704,6 @@ def main():
 
                     hoops1_key_root = match_info[2]
                     hoops2_key_root = match_info[3]
-                    
-                    # Get the clean integer result keys for metric display
-                    result1_key = f"{hoops1_key_root}_result"
-                    result2_key = f"{hoops2_key_root}_result"
                     
                     with current_match_col:
                         
@@ -705,11 +716,12 @@ def main():
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_h1:
-                            # number_input_simple returns the clean integer result
-                            live_hoops1 = number_input_simple(key=hoops1_key_root)
+                            # Pass the disabled state to the input function
+                            live_hoops1 = number_input_simple(key=hoops1_key_root, disabled=is_locked_bool)
                         
                         with col_h2:
-                            live_hoops2 = number_input_simple(key=hoops2_key_root)
+                            # Pass the disabled state to the input function
+                            live_hoops2 = number_input_simple(key=hoops2_key_root, disabled=is_locked_bool)
                         
                         with col_p2:
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player2.name}</h4>**", unsafe_allow_html=True)
@@ -742,7 +754,8 @@ def main():
         # SUBMISSION FORM (ONLY CONTAINS THE BUTTON)
         with st.form("results_submission_form"):
             st.markdown("---")
-            results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
+            # DISABLE THE SUBMIT BUTTON IF LOCKED
+            results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings", disabled=is_locked_bool)
             st.markdown("---")
             
             if results_submitted:
@@ -780,7 +793,6 @@ def main():
                 # After updating results, check for round completion and generate the next round if necessary
                 current_max_round = len(tournament.rounds)
                 
-                # Find the first round that has incomplete matches after the update
                 next_round_to_generate = -1
                 all_rounds_complete_for_gen = True
                 
@@ -788,29 +800,22 @@ def main():
                     pairings = tournament.get_round_pairings(r_idx)
                     non_bye_matches = [m for m in pairings if m and m.player2]
                     
-                    # Check if the round is now fully recorded (match.result is not None)
                     if any(m.result is None for m in non_bye_matches):
-                        # An existing round is incomplete, stop checking
                         all_rounds_complete_for_gen = False
                         break
                 
-                # Only generate the next round if ALL PREVIOUS rounds are fully recorded (match.result is not None)
                 if all_rounds_complete_for_gen and current_max_round < tournament.num_rounds:
                     next_round_to_generate = current_max_round
                 
-                # Handle the initial case if the update button was pressed before any rounds were recorded
                 if current_max_round == 0 and tournament.num_rounds > 0:
                      next_round_to_generate = 0
 
-                # Generate the new round
                 if next_round_to_generate != -1 and next_round_to_generate < tournament.num_rounds:
                     tournament.generate_round_pairings(next_round_to_generate, initial=False)
                     st.success(f"Round {next_round_to_generate + 1} pairings generated based on new standings.")
-                    # Re-run to update the form structure with the new round
                     st.rerun()
 
                 st.success("All match results processed! Standings recalculated.")
-                # Always rerun after an update to refresh all UI components
                 st.rerun()
 
 
@@ -829,23 +834,24 @@ def main():
         st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
         
         # --------------------------------------------------------------------
-        # --- Save and Export (Unchanged) ---
+        # --- Save and Export (Disabled if Locked) ---
         st.subheader("Save and Export")
         
         col_save, col_export1, col_export2 = st.columns(3)
 
         with col_save:
-            if st.button("Save Tournament", key="save_button"):
+            # DISABLE SAVE BUTTON IF LOCKED
+            if st.button("Save Tournament", key="save_button", disabled=is_locked_bool):
                 conn = init_db()
                 tournament_id = save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
                 if tournament_id:
                     st.session_state.loaded_id = tournament_id
                     st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
-                    # Rerunning here reloads the list for the current session and updates the sidebar selection state.
                     st.rerun()
 
         with col_export1:
+            # EXPORT is generally a "read-only" action, so typically NOT disabled by a lock.
             if st.button("Generate CSV", key="csv_button"):
                 filename = export_to_csv(tournament, st.session_state.tournament_name)
                 if filename:
@@ -859,6 +865,7 @@ def main():
                     os.remove(filename)
 
         with col_export2:
+            # EXPORT is generally a "read-only" action, so typically NOT disabled by a lock.
             if st.button("Generate Excel", key="excel_button"):
                 filename = export_to_excel(tournament, st.session_state.tournament_name)
                 if filename:
