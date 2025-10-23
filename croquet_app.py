@@ -144,7 +144,6 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-    # 🔑 FIX: ADDED METHOD TO COUNT GAMES PLAYED 🔑
     def get_games_played(self, player_id):
         count = 0
         for round_pairings in self.rounds:
@@ -860,20 +859,20 @@ def main():
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         
-        # --- MODIFIED STANDINGS DATA GENERATION ---
+        # --- MODIFIED STANDINGS DATA GENERATION (Re-adding Rank and keeping other columns) ---
         standings_data = [{
-            # 'Rank' is intentionally excluded
+            'Rank': i+1,  # RE-ADDED RANK COLUMN (Starting from 1)
             'Name': p.name,
-            'Games Played': tournament.get_games_played(p.id), # NEW COLUMN - Now working with added method
+            'Games Played': tournament.get_games_played(p.id),
             'Wins': p.wins,
             'Points': p.points,
             'Net Hoops': p.hoops_scored - p.hoops_conceded,
             'Hoops Scored': p.hoops_scored,
-            'Hoops Conceded': p.hoops_conceded # NEW COLUMN at the end
-        } for p in standings]
+            'Hoops Conceded': p.hoops_conceded 
+        } for i, p in enumerate(standings)]
         
-        # Display the modified DataFrame
-        st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
+        # Display the modified DataFrame, explicitly hiding the Pandas Index
+        st.dataframe(pd.DataFrame(standings_data), use_container_width=True, **index=False**) 
         # --------------------------------------------------------------------
         
         # --------------------------------------------------------------------
