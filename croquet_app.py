@@ -51,6 +51,7 @@ class Match:
         self.result = (hoops1, hoops2)
 
     def get_scores(self):
+        # Data is counted as (0, 0) if no result is set (i.e., match hasn't been played yet)
         return self.result if self.result else (0, 0)
 
 class SwissTournament:
@@ -417,7 +418,7 @@ def main():
         """, unsafe_allow_html=True)
     # --- End Custom CSS ---
     
-    st.title("ACC Croquet Tournament Manager - Random Pairings")
+    st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
 
     # Initialize state variables
     if 'tournament' not in st.session_state:
@@ -592,16 +593,20 @@ def main():
                             live_hoops1 = st.session_state.get(input1_key, 0)
                             live_hoops2 = st.session_state.get(input2_key, 0)
 
-                            status_text = f"{live_hoops1} - {live_hoops2}"
-                            
-                            if live_hoops1 > live_hoops2:
-                                status_delta = "P1 Wins"
-                            elif live_hoops2 > live_hoops1:
-                                status_delta = "P2 Wins"
-                            elif live_hoops1 == live_hoops2 and (live_hoops1 > 0):
-                                status_delta = "Draw (0 pts)"
-                            else:
+                            # --- START MODIFIED DISPLAY LOGIC ---
+                            if live_hoops1 == 0 and live_hoops2 == 0:
+                                status_text = " - " # Display blank
                                 status_delta = " "
+                            else:
+                                status_text = f"{live_hoops1} - {live_hoops2}"
+                                
+                                if live_hoops1 > live_hoops2:
+                                    status_delta = "P1 Wins"
+                                elif live_hoops2 > live_hoops1:
+                                    status_delta = "P2 Wins"
+                                else: 
+                                    status_delta = "Draw (0 pts)"
+                            # --- END MODIFIED DISPLAY LOGIC ---
 
                             st.metric(label="Score", value=status_text, delta=status_delta)
                                 
@@ -612,7 +617,6 @@ def main():
         # --- The Submission Form ---
         with st.form("results_submission_form"):
             st.markdown("---")
-            # This button will automatically be green due to the CSS targeting `.stForm .stButton button`
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
