@@ -13,11 +13,11 @@ class Player:
     def __init__(self, id, name):
         self.id = id
         self.name = name
-        self.points = 0
-        self.wins = 0
-        self.hoops_scored = 0
-        self.hoops_conceded = 0
-        self.opponents = set()
+        self.points = 0  # Points from wins (1 per win, 0 for bye/draw)
+        self.wins = 0  # Number of wins
+        self.hoops_scored = 0  # Total hoops scored
+        self.hoops_conceded = 0  # Total hoops conceded
+        self.opponents = set() # Store opponent IDs
 
     def add_opponent(self, opponent_id):
         self.opponents.add(opponent_id)
@@ -31,27 +31,30 @@ class Match:
     def __init__(self, player1, player2):
         self.player1 = player1
         self.player2 = player2
-        self.result = None
+        self.result = None  # (hoops1, hoops2)
 
     def set_result(self, hoops1, hoops2):
         hoops1, hoops2 = int(hoops1), int(hoops2)
-
+        
+        # BYE = 0 Points
         if self.player2 is None:
             self.result = (hoops1, hoops2)
             return
-
+            
+        # Update player stats
         self.player1.hoops_scored += hoops1
         self.player1.hoops_conceded += hoops2
         self.player2.hoops_scored += hoops2
         self.player2.hoops_conceded += hoops1
 
+        # No Draws (must have clear hoop advantage)
         if hoops1 > hoops2:
             self.player1.wins += 1
             self.player1.points += 1
         elif hoops2 > hoops1:
             self.player2.wins += 1
             self.player2.points += 1
-
+        
         self.result = (hoops1, hoops2)
 
     def get_scores(self):
@@ -71,84 +74,77 @@ class SwissTournament:
     def generate_round_pairings(self, round_num, initial=False):
         while len(self.rounds) <= round_num:
             self.rounds.append([])
-
-        self.rounds[round_num] = []
+        
+        self.rounds[round_num] = [] 
         round_pairings = []
-
+        
         if initial:
             available_players = self.players.copy()
-            random.shuffle(available_players)
+            random.shuffle(available_players) 
         else:
             available_players = self.get_standings()
-
+        
         used_players = set()
-
+        
         for i in range(len(available_players)):
             p1 = available_players[i]
             if p1.id in used_players:
                 continue
-
+            
             best_p2 = None
             for j in range(i + 1, len(available_players)):
                 p2 = available_players[j]
                 if p2.id not in used_players and p2.id not in p1.opponents:
                     best_p2 = p2
                     break
-
+            
             if best_p2:
                 round_pairings.append(Match(p1, best_p2))
                 used_players.add(p1.id)
                 used_players.add(best_p2.id)
                 p1.add_opponent(best_p2.id)
                 best_p2.add_opponent(p1.id)
-
-            # NOTE: Removed a block that handled remaining players inside the loop
-            # to rely solely on the block below for better consistency.
             
         remaining_players = [p for p in available_players if p.id not in used_players]
         if remaining_players:
-            # Simple version: the highest-ranked remaining player gets the bye
             bye_player = remaining_players[0]
             round_pairings.append(Match(bye_player, None))
-
+        
         self.rounds[round_num] = round_pairings
-
+        
         if len(used_players) + len(remaining_players) != len(self.players):
              st.warning(f"Warning: Only {len(used_players) + len(remaining_players)}/{len(self.players)} players paired in round {round_num + 1} due to opponent restrictions.")
 
     def record_result(self, round_num, match_num, hoops1, hoops2):
         if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num]):
             match = self.rounds[round_num][match_num]
-
+            
             p1, p2 = match.player1, match.player2
             old_hoops1, old_hoops2 = match.get_scores()
-
+            
             # Reset previous results
             if match.result is not None:
-                if p2 is None:
-                    # BYE: No points to reset
-                    pass
-                else:
+                if p2 is not None:
+                    # Reset hoops stats
                     p1.hoops_scored -= old_hoops1
                     p1.hoops_conceded -= old_hoops2
                     p2.hoops_scored -= old_hoops2
                     p2.hoops_conceded -= old_hoops1
-
+                    
+                    # Reset points/wins
                     if old_hoops1 > old_hoops2:
                         p1.wins -= 1
                         p1.points -= 1
                     elif old_hoops2 > old_hoops1:
                         p2.wins -= 1
                         p2.points -= 1
-
+            
             # Set new results (Match.set_result handles updating player stats)
             match.set_result(hoops1, hoops2)
-
+            
             # Re-pair the next round, as standings have changed
             if round_num + 1 < self.num_rounds:
                  self.generate_round_pairings(round_num + 1)
-        else:
-            st.error(f"Invalid round_num {round_num} or match_num {match_num}")
 
     def get_standings(self):
         # Tie-breakers: 1. Points (Wins), 2. Net Hoops, 3. Hoops Scored
@@ -164,13 +160,20 @@ class SwissTournament:
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
+    
+    # Tournament table
     c.execute('''CREATE TABLE IF NOT EXISTS tournaments
                  (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
+                 
+    # Players table - CORRECTED TO INCLUDE 'wins INTEGER'
     c.execute('''CREATE TABLE IF NOT EXISTS players
-                 (tournament_id INTEGER, player_id INTEGER, name TEXT, points INTEGER, wins INTEGER,
+                 (tournament_id INTEGER, player_id INTEGER, name TEXT, 
+                  points INTEGER, wins INTEGER, 
                   hoops_scored INTEGER, hoops_conceded INTEGER,
                   PRIMARY KEY (tournament_id, player_id),
                   FOREIGN KEY (tournament_id) REFERENCES tournaments(id))''')
+                  
+    # Matches table
     c.execute('''CREATE TABLE IF NOT EXISTS matches
                  (tournament_id INTEGER, round_num INTEGER, match_num INTEGER,
                   player1_id INTEGER, player2_id INTEGER, hoops1 INTEGER, hoops2 INTEGER)''')
@@ -185,6 +188,7 @@ def save_to_db(tournament, tournament_name, conn):
         c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
         tournament_id = c.lastrowid
 
+        # Player data now includes wins
         player_data = [(tournament_id, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in tournament.players]
         c.executemany("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)", player_data)
 
@@ -200,9 +204,9 @@ def save_to_db(tournament, tournament_name, conn):
         conn.commit()
     except sqlite3.Error as e:
         st.error(f"Database error on save: {e}")
-        conn.rollback()
+        conn.rollback() 
 
-# --- Export Functions ---
+# --- Export Functions (Unchanged) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -246,7 +250,7 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Callback Functions ---
+# --- Callback Functions (Fixes st.experimental_rerun() crashes) ---
 
 def decrement_score(key, step, min_value):
     """Callback to safely decrement score in session state."""
@@ -325,6 +329,7 @@ def main():
                 if len(st.session_state.players) < 2:
                     st.error("At least 2 players are required!")
                 else:
+                    # Clear ALL old hoop input states from previous tournaments
                     for key in list(st.session_state.keys()):
                         if key.endswith(("_temp", "_input")):
                             del st.session_state[key]
@@ -338,7 +343,7 @@ def main():
         
         st.header(f"Tournament: {st.session_state.tournament_name}")
 
-        # --- Match Results & Pairing Display ---
+        # --- Match Results & Pairing Display (Inputs OUTSIDE the submission form) ---
         st.subheader("Match Results & Input")
         
         score_keys_to_update = [] 
@@ -366,6 +371,7 @@ def main():
                     st.write("*(Hoop scores must differ to award a win point)*")
                 
                 with col2:
+                    # Input is drawn here
                     number_input_with_buttons(
                         label=f"Hoops for {match.player1.name}",
                         key=hoops1_key,
@@ -374,6 +380,7 @@ def main():
                     )
                     
                 with col3:
+                    # Input is drawn here
                     number_input_with_buttons(
                         label=f"Hoops for {match.player2.name}",
                         key=hoops2_key,
@@ -388,12 +395,13 @@ def main():
                             status = f"Winner: {match.player1.name}"
                         elif match.result[1] > match.result[0]:
                             status = f"Winner: {match.player2.name}"
+                        # This metric correctly reflects the recorded score
                         st.metric(label="Current Score", value=f"{match.result[0]} - {match.result[1]}", delta=status)
                     else:
                         st.metric(label="Current Score", value="Not Recorded")
 
 
-        # --- The Submission Form ---
+        # --- The Submission Form (Only the button is here) ---
         with st.form("results_submission_form"):
             st.markdown("---")
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
@@ -403,6 +411,7 @@ def main():
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
+                    # Retrieve the final values from session state using the "_temp" key
                     hoops1_key = f"{hoops1_key_root}_temp"
                     hoops2_key = f"{hoops2_key_root}_temp"
                     
@@ -415,7 +424,7 @@ def main():
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
                     
                 st.success("All results updated! Standings and subsequent round pairings recalculated.")
-                # st.experimental_rerun() <-- THIS LINE WAS REMOVED TO FIX THE ATTRIBUTEERROR
+                # Removed st.experimental_rerun() to prevent AttributeErrors on submission
 
         # --- Standings ---
         st.subheader("Current Standings 🏆")
