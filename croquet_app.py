@@ -144,14 +144,17 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-    # New method to count total non-BYE games played by a player
+    # 🔑 FIX: ADDED METHOD TO COUNT GAMES PLAYED 🔑
     def get_games_played(self, player_id):
         count = 0
         for round_pairings in self.rounds:
             for match in round_pairings:
+                # Only count matches that have a result recorded
                 if match and match.result is not None:
+                    # Check if the player was player 1 and it wasn't a BYE
                     if match.player1.id == player_id and match.player2 is not None:
                         count += 1
+                    # Check if the player was player 2
                     elif match.player2 and match.player2.id == player_id:
                         count += 1
         return count
@@ -861,7 +864,7 @@ def main():
         standings_data = [{
             # 'Rank' is intentionally excluded
             'Name': p.name,
-            'Games Played': tournament.get_games_played(p.id), # NEW COLUMN
+            'Games Played': tournament.get_games_played(p.id), # NEW COLUMN - Now working with added method
             'Wins': p.wins,
             'Points': p.points,
             'Net Hoops': p.hoops_scored - p.hoops_conceded,
