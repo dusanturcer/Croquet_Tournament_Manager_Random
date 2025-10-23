@@ -141,7 +141,7 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-# --- Database Functions ---
+# --- Database Functions (Unchanged) ---
 
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
@@ -188,7 +188,7 @@ def save_to_db(tournament, tournament_name, conn):
         st.error(f"Database error on save: {e}")
         conn.rollback() 
 
-# --- Export Functions ---
+# --- Export Functions (Unchanged) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -232,16 +232,14 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Callback Functions ---
+# --- Callback Functions (Unchanged) ---
 
 def decrement_score(key, step, min_value):
-    # This key tracks the score displayed in the Streamlit number input
     input_key = f"{key}_input"
     current_value = st.session_state.get(input_key, 0)
     st.session_state[input_key] = max(min_value, current_value - step)
 
 def increment_score(key, step, max_value):
-    # This key tracks the score displayed in the Streamlit number input
     input_key = f"{key}_input"
     current_value = st.session_state.get(input_key, 0)
     st.session_state[input_key] = min(max_value, current_value + step)
@@ -250,12 +248,9 @@ def increment_score(key, step, max_value):
 # --- Streamlit UI and Logic ---
 
 def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
-    # The native Streamlit input key
     input_key = f"{key}_input"
 
-    # FIX 1: Synchronization - Initialize/reset the input's session state based on the match object's current score 
-    if input_key not in st.session_state or st.session_state[input_key] != int(value):
-        st.session_state[input_key] = int(value)
+    # We rely on st.session_state[input_key] being pre-set in main()
 
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -268,16 +263,15 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
         ) 
 
     with col2:
-        # FIX 2: Removed the redundant assignment that caused the StreamlitAPIException.
-        # Streamlit handles the assignment to st.session_state[input_key] automatically.
+        # Use the pre-set session state value for the widget
         st.number_input(
             label,
             min_value=min_value,
             max_value=max_value,
-            value=st.session_state[input_key], # Use the state for initialization
+            value=st.session_state[input_key], 
             step=step,
             format="%d",
-            key=input_key # Streamlit manages this key internally
+            key=input_key
         )
         
     with col3:
@@ -288,7 +282,6 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
             args=(key, step, max_value)
         )
     
-    # Return the current value stored by Streamlit in the session state
     return int(st.session_state[input_key])
 
 
@@ -333,6 +326,24 @@ def main():
         st.subheader("Match Results & Input")
         
         score_keys_to_update = [] 
+        
+        # 🟢 FIX: PRE-SYNCHRONIZE SESSION STATE before widget creation
+        for round_num in range(tournament.num_rounds):
+            pairings = tournament.get_round_pairings(round_num)
+            for match_num, match in enumerate(pairings):
+                if match.player2 is not None:
+                    hoops1_key = f"hoops1_r{round_num}_m{match_num}"
+                    hoops2_key = f"hoops2_r{round_num}_m{match_num}"
+                    input1_key = f"{hoops1_key}_input"
+                    input2_key = f"{hoops2_key}_input"
+                    
+                    current_hoops1, current_hoops2 = match.get_scores()
+                    
+                    if input1_key not in st.session_state or st.session_state[input1_key] != current_hoops1:
+                        st.session_state[input1_key] = current_hoops1
+                    if input2_key not in st.session_state or st.session_state[input2_key] != current_hoops2:
+                        st.session_state[input2_key] = current_hoops2
+        # 🟢 END FIX BLOCK
 
         for round_num in range(tournament.num_rounds):
             st.markdown(f"#### Round {round_num + 1} Pairings")
@@ -361,7 +372,7 @@ def main():
                     number_input_with_buttons(
                         label=f"Hoops for {match.player1.name}",
                         key=hoops1_key,
-                        value=int(match.get_scores()[0]),
+                        value=0, # Value is ignored but required; state is managed by pre-sync
                         min_value=0, max_value=26
                     )
                     
@@ -369,7 +380,7 @@ def main():
                     number_input_with_buttons(
                         label=f"Hoops for {match.player2.name}",
                         key=hoops2_key,
-                        value=int(match.get_scores()[1]),
+                        value=0, # Value is ignored but required; state is managed by pre-sync
                         min_value=0, max_value=26
                     )
                 
@@ -396,7 +407,6 @@ def main():
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
-                    # FIX: Retrieve score directly from the Streamlit number input's internal key
                     hoops1_key = f"{hoops1_key_root}_input"
                     hoops2_key = f"{hoops2_key_root}_input"
                     
@@ -406,7 +416,6 @@ def main():
                     if hoops1 == hoops2 and match.player2 is not None:
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
                         
-                    # Process the result and update the tournament state (this fixes the double-click issue)
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
 
                 st.success("All visible match results updated! Standings recalculated.")
