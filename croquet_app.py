@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from collections import Counter
 
-# --- Player and Match Classes (Unchanged) ---
+# --- Player and Match Classes ---
 
 class Player:
     def __init__(self, id, name):
@@ -159,7 +159,7 @@ class SwissTournament:
         return count
 
 # ----------------------------------------------------------------------
-# --- Database Functions (Unchanged) ---
+# --- Database Functions ---
 # ----------------------------------------------------------------------
 
 DB_PATH = 'tournament.db'
@@ -855,13 +855,13 @@ def main():
 
 
         # --------------------------------------------------------------------
-        # --- Standings (Modified) ---
+        # --- Standings (Corrected to show Rank and hide Index) ---
         st.subheader("Current Standings 🏆")
         standings = tournament.get_standings()
         
-        # --- MODIFIED STANDINGS DATA GENERATION (Re-adding Rank and keeping other columns) ---
+        # --- STANDINGS DATA GENERATION ---
         standings_data = [{
-            'Rank': i+1,  # RE-ADDED RANK COLUMN (Starting from 1)
+            'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
             'Name': p.name,
             'Games Played': tournament.get_games_played(p.id),
             'Wins': p.wins,
@@ -871,8 +871,8 @@ def main():
             'Hoops Conceded': p.hoops_conceded 
         } for i, p in enumerate(standings)]
         
-        # Display the modified DataFrame, explicitly hiding the Pandas Index
-        st.dataframe(pd.DataFrame(standings_data), use_container_width=True, **index=False**) 
+        # Display the DataFrame, explicitly setting index=False to hide the default Pandas index
+        st.dataframe(pd.DataFrame(standings_data), use_container_width=True, index=False) 
         # --------------------------------------------------------------------
         
         # --------------------------------------------------------------------
