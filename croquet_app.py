@@ -13,11 +13,11 @@ class Player:
     def __init__(self, id, name):
         self.id = id
         self.name = name
-        self.points = 0  # Points from wins (1 per win, 0 for bye/draw)
-        self.wins = 0  # Number of wins (Needed for the database schema)
-        self.hoops_scored = 0  # Total hoops scored
-        self.hoops_conceded = 0  # Total hoops conceded
-        self.opponents = set() # Store opponent IDs
+        self.points = 0  
+        self.wins = 0  
+        self.hoops_scored = 0  
+        self.hoops_conceded = 0 
+        self.opponents = set()
 
     def add_opponent(self, opponent_id):
         self.opponents.add(opponent_id)
@@ -59,11 +59,13 @@ class SwissTournament:
         self.players = [Player(i, name) for i, name in enumerate(players)]
         self.num_rounds = num_rounds
         self.rounds = []
-        # Only generate the first round initially
-        self.generate_round_pairings(0, initial=True)
-        # Initialize empty lists for future rounds
-        for round_num in range(1, self.num_rounds):
-            self.rounds.append([])
+        
+        # FIX: Generate pairings for ALL rounds immediately upon creation.
+        # This ensures all rounds are displayed, even if R2 is based on R1's initial random state.
+        for round_num in range(self.num_rounds):
+            initial = (round_num == 0)
+            # Pass the standings from the (fully calculated) previous round if available
+            self.generate_round_pairings(round_num, initial=initial) 
 
     def generate_round_pairings(self, round_num, initial=False):
         while len(self.rounds) <= round_num:
@@ -77,6 +79,7 @@ class SwissTournament:
             available_players = self.players.copy()
             random.shuffle(available_players) 
         else:
+            # If generating a subsequent round, use the current cumulative standings
             available_players = self.get_standings()
         
         used_players = set()
@@ -89,8 +92,7 @@ class SwissTournament:
             best_p2 = None
             for j in range(i + 1, len(available_players)):
                 p2 = available_players[j]
-                # Check opponent history only for non-initial rounds
-                if p2.id not in used_players and (initial or p2.id not in p1.opponents):
+                if p2.id not in used_players and p2.id not in p1.opponents:
                     best_p2 = p2
                     break
             
@@ -134,10 +136,10 @@ class SwissTournament:
                         p2.wins -= 1
                         p2.points -= 1
             
+            # Set new results (handles the cumulative update)
             match.set_result(hoops1, hoops2)
             
-            # --- FIX: Removed logic to re-pair the next round here ---
-            # Re-pairing is now handled *after* all results are processed in main()
+            # FIX: Removed the automatic re-pairing logic here as requested.
 
     def get_standings(self):
         return sorted(self.players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
@@ -194,6 +196,8 @@ def save_to_db(tournament, tournament_name, conn):
         st.error(f"Database error on save: {e}")
         conn.rollback() 
 
+# --- Export Functions (Unchanged) ---
+
 def export_to_csv(tournament, tournament_name):
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -239,29 +243,34 @@ def export_to_excel(tournament, tournament_name):
 # --- Callback Functions (Unchanged) ---
 
 def decrement_score(key, step, min_value):
-    temp_key = f"{key}_temp"
-    current_value = st.session_state.get(temp_key, 0)
-    st.session_state[temp_key] = max(min_value, current_value - step)
+    # This key tracks the score displayed in the number input
+    input_key = f"{key}_input"
+    current_value = st.session_state.get(input_key, 0)
+    st.session_state[input_key] = max(min_value, current_value - step)
 
 def increment_score(key, step, max_value):
-    temp_key = f"{key}_temp"
-    current_value = st.session_state.get(temp_key, 0)
-    st.session_state[temp_key] = min(max_value, current_value + step)
+    # This key tracks the score displayed in the number input
+    input_key = f"{key}_input"
+    current_value = st.session_state.get(input_key, 0)
+    st.session_state[input_key] = min(max_value, current_value + step)
 
 
 # --- Streamlit UI and Logic ---
 
-# Custom number input with + and - buttons (Unchanged)
+# Custom number input with + and - buttons
 def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
-    temp_key = f"{key}_temp"
+    # FIX: Use the native Streamlit input key for synchronization
+    input_key = f"{key}_input"
 
-    # Synchronization FIX: Re-initialize the input's session state based on the match object's current score
-    if temp_key not in st.session_state or st.session_state[temp_key] != int(value):
-        st.session_state[temp_key] = int(value)
+    # Initialize or reset the input state based on the match object's current score
+    # This prevents the "Not Recorded" issue and keeps the input synchronized
+    if input_key not in st.session_state or st.session_state[input_key] != int(value):
+        st.session_state[input_key] = int(value)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
+        # Pass the input_key to the callback so it updates the number input directly
         st.button(
             "−", 
             key=f"minus_{key}",
@@ -270,17 +279,19 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
         ) 
 
     with col2:
-        st.session_state[temp_key] = st.number_input(
+        # This is the single source of truth for the score input value
+        st.session_state[input_key] = st.number_input(
             label,
             min_value=min_value,
             max_value=max_value,
-            value=st.session_state[temp_key],
+            value=st.session_state[input_key],
             step=step,
             format="%d",
-            key=f"{key}_input"
+            key=input_key # Use the specific key
         )
         
     with col3:
+        # Pass the input_key to the callback
         st.button(
             "+", 
             key=f"plus_{key}",
@@ -288,7 +299,7 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
             args=(key, step, max_value)
         )
     
-    return int(st.session_state[temp_key])
+    return int(st.session_state[input_key])
 
 
 def main():
@@ -314,12 +325,13 @@ def main():
                 if len(st.session_state.players) < 2:
                     st.error("At least 2 players are required!")
                 else:
+                    # Clear ALL old hoop input states
                     for key in list(st.session_state.keys()):
-                        if key.endswith(("_temp", "_input")):
+                        if key.endswith(("_input")): # Only clear the input keys
                             del st.session_state[key]
                             
                     st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
-                    st.success("Tournament created! Scroll down to enter results.")
+                    st.success("Tournament created! All pairings generated. Scroll down to enter results.")
 
     # --- Tournament Management ---
     if st.session_state.tournament:
@@ -335,11 +347,6 @@ def main():
         for round_num in range(tournament.num_rounds):
             st.markdown(f"#### Round {round_num + 1} Pairings")
             pairings = tournament.get_round_pairings(round_num)
-            
-            # If pairings is empty (meaning it's an unplayed future round), skip display
-            if not pairings and round_num > 0:
-                 st.info(f"Pairings for Round {round_num + 1} will be generated after all results for Round {round_num} are submitted.")
-                 continue
 
             for match_num, match in enumerate(pairings):
                 st.markdown("---")
@@ -353,6 +360,7 @@ def main():
                 hoops1_key = f"hoops1_r{round_num}_m{match_num}"
                 hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                 
+                # We save the root key and the full Streamlit input key
                 score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
                 with col1:
@@ -395,31 +403,23 @@ def main():
             st.markdown("---")
             
             if results_submitted:
-                max_recorded_round = -1
                 
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
-                    hoops1_key = f"{hoops1_key_root}_temp"
-                    hoops2_key = f"{hoops2_key_root}_temp"
+                    # FIX: Retrieve score directly from the Streamlit number input's key
+                    hoops1_key = f"{hoops1_key_root}_input"
+                    hoops2_key = f"{hoops2_key_root}_input"
                     
+                    # These values are guaranteed to be the current values shown in the UI
                     hoops1 = st.session_state.get(hoops1_key, 0)
                     hoops2 = st.session_state.get(hoops2_key, 0)
                     
-                    # Record the result
+                    if hoops1 == hoops2 and match.player2 is not None:
+                        st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
+                        
+                    # Process the result and update the tournament state
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
-                    
-                    # Track the highest round with a recorded result (excluding 0,0)
-                    if hoops1 != 0 or hoops2 != 0:
-                        max_recorded_round = max(max_recorded_round, round_num)
-
-                # --- NEW LOGIC: GENERATE NEXT ROUND PAIRINGS ONLY AFTER A ROUND IS COMPLETE ---
-                next_round_num = max_recorded_round + 1
-                if next_round_num < tournament.num_rounds and next_round_num > 0:
-                    # Check if the next round is currently empty (meaning it needs pairing)
-                    if not tournament.get_round_pairings(next_round_num):
-                        tournament.generate_round_pairings(next_round_num)
-                        st.success(f"Pairings for Round {next_round_num + 1} generated based on current standings.")
 
                 st.success("All visible match results updated! Standings recalculated.")
 
