@@ -157,7 +157,7 @@ class SwissTournament:
                 # Only count matches that have a result recorded
                 if match and match.result is not None:
                     # Check if the player was player 1 and it wasn't a BYE
-                    if match.player1.id == player_id and match.player2 is not None:
+                    if match.player1 and match.player1.id == player_id and match.player2 is not None:
                         count += 1
                     # Check if the player was player 2
                     elif match.player2 and match.player2.id == player_id:
@@ -326,8 +326,10 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
 
         # Restore opponents set, required for generating future rounds
         if p2 is not None:
-            p1.add_opponent(p2_id)
-            p2.add_opponent(p1_id)
+            # Only add opponent if both players exist
+            if p2 is not None:
+                p1.add_opponent(p2_id)
+                p2.add_opponent(p1_id)
 
         match = Match(p1, p2)
         match.result = (h1, h2)
@@ -892,23 +894,33 @@ def main():
 
         # Check if the list of players is NOT empty
         if standings: 
-            # --- STANDINGS DATA GENERATION ---
-            standings_data = [{
-                'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
-                'Name': p.name,
-                # THIS IS THE LINE WHERE A FAILURE ON A CORRUPT PLAYER OBJECT WOULD CRASH:
-                'Games Played': tournament.get_games_played(p.id),
-                'Wins': p.wins,
-                'Points': p.points,
-                'Net Hoops': p.hoops_scored - p.hoops_conceded,
-                'Hoops Scored': p.hoops_scored,
-                'Hoops Conceded': p.hoops_conceded 
-            } for i, p in enumerate(standings)]
+            # --- STANDINGS DATA GENERATION (FIXED FOR ROBUSTNESS) ---
+            standings_data = []
+            for i, p in enumerate(standings):
+                # Ensure the object is actually a Player instance before accessing attributes
+                if not isinstance(p, Player):
+                    st.error(f"Error: Non-Player object found in standings list. Skipping entry.")
+                    continue
+                    
+                standings_data.append({
+                    'Rank': i+1,  # RANK COLUMN: Generated from the sorted position (i+1)
+                    'Name': p.name,
+                    'Games Played': tournament.get_games_played(p.id),
+                    'Wins': p.wins,
+                    'Points': p.points,
+                    'Net Hoops': p.hoops_scored - p.hoops_conceded,
+                    'Hoops Scored': p.hoops_scored,
+                    'Hoops Conceded': p.hoops_conceded 
+                })
             
-            df = pd.DataFrame(standings_data)
+            # Create DataFrame only if data was generated
+            if standings_data:
+                df = pd.DataFrame(standings_data)
+            else:
+                df = pd.DataFrame(columns=column_names)
         
         else:
-            # FIX: Create an EMPTY DataFrame with explicit columns to avoid TypeError
+            # Create an EMPTY DataFrame with explicit columns
             df = pd.DataFrame(columns=column_names)
             st.info("No player data available yet. Please create a tournament with players above.")
             
