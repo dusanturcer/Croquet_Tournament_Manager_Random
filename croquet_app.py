@@ -7,7 +7,7 @@ import csv
 import os
 from datetime import datetime
 
-# --- Player and Match Classes (Unchanged) ---
+# --- Player and Match Classes ---
 
 class Player:
     def __init__(self, id, name):
@@ -52,7 +52,7 @@ class Match:
     def get_scores(self):
         return self.result if self.result else (0, 0)
 
-# --- Swiss Tournament Logic (Unchanged) ---
+# --- Swiss Tournament Logic ---
 
 class SwissTournament:
     def __init__(self, players, num_rounds):
@@ -140,7 +140,7 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-# --- Database & Export Functions (Unchanged) ---
+# --- Database Functions (Unchanged) ---
 
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
@@ -186,6 +186,8 @@ def save_to_db(tournament, tournament_name, conn):
     except sqlite3.Error as e:
         st.error(f"Database error on save: {e}")
         conn.rollback() 
+
+# --- Export Functions (Unchanged) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -259,6 +261,7 @@ def number_input_with_buttons(label, key, min_value=0, max_value=26, step=1):
         ) 
 
     with col2:
+        # FIX: Removed the 'value' parameter to prevent StreamlitAPIException
         st.number_input(
             label,
             min_value=min_value,
@@ -321,7 +324,7 @@ def main():
         
         score_keys_to_update = [] 
         
-        # 🟢 FIX: PRE-SYNCHRONIZE SESSION STATE with overwrite prevention
+        # FIX: PRE-SYNCHRONIZE SESSION STATE with overwrite prevention
         for round_num in range(tournament.num_rounds):
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
@@ -333,17 +336,14 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
-                    # 💡 NEW LOGIC: Only reset the input to the saved score 
-                    # if the current session state value matches the saved score.
-                    # This prevents overwriting a manually typed score (which causes a rerun)
-                    # with the old saved score (0) before the form is submitted.
-                    
+                    # Only reset the input to the saved score if the current session state value 
+                    # is the same as the saved score (meaning no user input has happened yet).
                     if input1_key not in st.session_state or st.session_state.get(input1_key, 0) == current_hoops1:
                         st.session_state[input1_key] = current_hoops1
                     
                     if input2_key not in st.session_state or st.session_state.get(input2_key, 0) == current_hoops2:
                         st.session_state[input2_key] = current_hoops2
-        # 🟢 END FIX BLOCK
+        # END FIX BLOCK
 
         for round_num in range(tournament.num_rounds):
             st.markdown(f"#### Round {round_num + 1} Pairings")
@@ -383,7 +383,28 @@ def main():
                     )
                 
                 with col4:
-                    if match.result:
+                    # FIX: Instant Score Marking
+                    input1_key = f"{hoops1_key}_input"
+                    input2_key = f"{hoops2_key}_input"
+                    
+                    # Get the LIVE scores from the session state
+                    live_hoops1 = st.session_state.get(input1_key, 0)
+                    live_hoops2 = st.session_state.get(input2_key, 0)
+
+                    status = "Not Recorded"
+                    
+                    # If any score is not zero, or if the form was previously submitted
+                    if live_hoops1 != 0 or live_hoops2 != 0:
+                        status = "Draw (0 pts)"
+                        
+                        if live_hoops1 > live_hoops2:
+                            status = f"Winner: {match.player1.name}"
+                        elif live_hoops2 > live_hoops1:
+                            status = f"Winner: {match.player2.name}"
+                            
+                        st.metric(label="Current Score", value=f"{live_hoops1} - {live_hoops2}", delta=status)
+                    elif match.result:
+                         # Show saved result if live scores are 0-0 but a result was recorded
                         status = "Draw (0 pts)"
                         if match.result[0] > match.result[1]:
                             status = f"Winner: {match.player1.name}"
