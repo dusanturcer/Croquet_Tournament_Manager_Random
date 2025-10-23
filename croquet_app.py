@@ -161,18 +161,18 @@ def init_db(db_path=DB_PATH):
     c = conn.cursor()
     
     c.execute('''CREATE TABLE IF NOT EXISTS tournaments
-                 (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
-                 
+                (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
+                
     c.execute('''CREATE TABLE IF NOT EXISTS players
-                 (tournament_id INTEGER, player_id INTEGER, name TEXT, 
-                  points INTEGER, wins INTEGER, 
-                  hoops_scored INTEGER, hoops_conceded INTEGER,
-                  PRIMARY KEY (tournament_id, player_id),
-                  FOREIGN KEY (tournament_id) REFERENCES tournaments(id))''')
-                  
+                (tournament_id INTEGER, player_id INTEGER, name TEXT, 
+                 points INTEGER, wins INTEGER, 
+                 hoops_scored INTEGER, hoops_conceded INTEGER,
+                 PRIMARY KEY (tournament_id, player_id),
+                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id))''')
+                 
     c.execute('''CREATE TABLE IF NOT EXISTS matches
-                 (tournament_id INTEGER, round_num INTEGER, match_num INTEGER,
-                  player1_id INTEGER, player2_id INTEGER, hoops1 INTEGER, hoops2 INTEGER)''')
+                (tournament_id INTEGER, round_num INTEGER, match_num INTEGER,
+                 player1_id INTEGER, player2_id INTEGER, hoops1 INTEGER, hoops2 INTEGER)''')
     conn.commit()
     return conn
 
@@ -616,7 +616,8 @@ def main():
         if selected_id:
             st.markdown("---")
             st.warning("PERMANENT ACTION")
-            if st.button(f"🗑️ Delete '{selected_display}' from DB", key="delete_button", disabled=is_locked_bool):
+            # 💡 THIS LINE IS UPDATED: button text is now "🗑️ Delete Tournament"
+            if st.button(f"🗑️ Delete Tournament", key="delete_button", disabled=is_locked_bool):
                 if delete_tournament_from_db(selected_id):
                     st.success(f"Tournament '{selected_display}' deleted. Reloading page...")
                     st.session_state.tournament = None
@@ -718,8 +719,8 @@ def main():
                     
                     try:
                         match_info = next((r, m, k1, k2) 
-                                        for r, m, k1, k2 in score_keys_to_update 
-                                        if r == round_num and m == round_pairings.index(match))
+                                             for r, m, k1, k2 in score_keys_to_update 
+                                             if r == round_num and m == round_pairings.index(match))
                     except StopIteration:
                         continue
 
@@ -766,138 +767,138 @@ def main():
                                 
                         current_match_col.markdown("---")
                         match_display_num += 1
+                        
+        # --- Update Results Form ---
+        # The Match input boxes now update the session state directly via their callbacks.
+        # This form is only needed to apply those session state changes back to the 
+        # main tournament object (i.e., calculate points/standings) and save to DB.
+
+        # Only allow submission if the app is NOT locked
+        is_form_disabled = is_locked_bool
+
+        with st.form("update_results_form"):
+            st.markdown("### Apply & Save Results")
+            st.info("Click 'Update Standings & Save to DB' to apply all entered scores in the match results section above and save the entire tournament state.")
             
-            # Show completion text if the round is complete 
-            if is_round_complete:
-                st.markdown('<p class="round-complete-text">✅ All games played for this round</p>', unsafe_allow_html=True)
-            # --------------------------------------------------------
-
-        # SUBMISSION FORM (ONLY CONTAINS THE BUTTON)
-        with st.form("results_submission_form"):
-            st.markdown("---")
-            # DISABLE THE SUBMIT BUTTON IF LOCKED
-            results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings", disabled=is_locked_bool)
-            st.markdown("---")
+            submitted = st.form_submit_button("💾 Update Standings & Save to DB", disabled=is_form_disabled)
             
-            if results_submitted:
+            if submitted and not is_form_disabled:
+                # 1. Update the tournament object with scores from session state
+                match_updates_made = False
+                for r_num, m_num, k1_root, k2_root in score_keys_to_update:
+                    
+                    # Read the clean integer score from the result key
+                    hoops1 = st.session_state.get(f"{k1_root}_result", 0)
+                    hoops2 = st.session_state.get(f"{k2_root}_result", 0)
+                    
+                    current_h1, current_h2 = tournament.rounds[r_num][m_num].get_scores()
+                    
+                    # Only update if the score has changed AND it's a valid result (not 0-0)
+                    if (hoops1, hoops2) != (current_h1, current_h2):
+                        tournament.record_result(r_num, m_num, hoops1, hoops2)
+                        match_updates_made = True
                 
-                # Reset all player stats before reapplying scores
-                for p in tournament.players:
-                    p.points = 0
-                    p.wins = 0
-                    p.hoops_scored = 0
-                    p.hoops_conceded = 0
-                
-                # Reapply results using the values from the new result_key in session state
-                for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
-                    match = tournament.get_round_pairings(round_num)[match_num]
-                    
-                    if match is None or match.player2 is None: continue
-                    
-                    # Use the clean integer result keys
-                    result1_key = f"{hoops1_key_root}_result"
-                    result2_key = f"{hoops2_key_root}_result"
-                    
-                    # Ensure we use the cleaned integer value from the session state
-                    hoops1 = st.session_state.get(result1_key, 0)
-                    hoops2 = st.session_state.get(result2_key, 0)
-                    
-                    if hoops1 == hoops2 and hoops1 > 0:
-                        st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded.")
-                    
-                    # Temporarily reset match.result to None to allow record_result to function as a set/reset
-                    match.result = None 
-                    
-                    # This applies the score AND updates player stats
-                    match.set_result(hoops1, hoops2)
-
-                # After updating results, check for round completion and generate the next round if necessary
-                current_max_round = len(tournament.rounds)
-                
-                next_round_to_generate = -1
-                all_rounds_complete_for_gen = True
-                
-                for r_idx in range(current_max_round):
-                    pairings = tournament.get_round_pairings(r_idx)
-                    non_bye_matches = [m for m in pairings if m and m.player2]
-                    
-                    if any(m.result is None for m in non_bye_matches):
-                        all_rounds_complete_for_gen = False
-                        break
-                
-                if all_rounds_complete_for_gen and current_max_round < tournament.num_rounds:
-                    next_round_to_generate = current_max_round
-                
-                if current_max_round == 0 and tournament.num_rounds > 0:
-                     next_round_to_generate = 0
-
-                if next_round_to_generate != -1 and next_round_to_generate < tournament.num_rounds:
-                    tournament.generate_round_pairings(next_round_to_generate, initial=False)
-                    st.success(f"Round {next_round_to_generate + 1} pairings generated based on new standings.")
-                    st.rerun()
-
-                st.success("All match results processed! Standings recalculated.")
-                st.rerun()
-
-
-        # --------------------------------------------------------------------
-        # --- Standings (Unchanged) ---
-        st.subheader("Current Standings 🏆")
-        standings = tournament.get_standings()
-        standings_data = [{
-            'Rank': i+1,
-            'Name': p.name,
-            'Wins': p.wins,
-            'Points': p.points,
-            'Net Hoops': p.hoops_scored - p.hoops_conceded,
-            'Hoops Scored': p.hoops_scored
-        } for i, p in enumerate(standings)]
-        st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
-        
-        # --------------------------------------------------------------------
-        # --- Save and Export (Disabled if Locked) ---
-        st.subheader("Save and Export")
-        
-        col_save, col_export1, col_export2 = st.columns(3)
-
-        with col_save:
-            # DISABLE SAVE BUTTON IF LOCKED
-            if st.button("Save Tournament", key="save_button", disabled=is_locked_bool):
+                # 2. Save the updated tournament to the database
                 conn = init_db()
                 tournament_id = save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
+                
                 if tournament_id:
                     st.session_state.loaded_id = tournament_id
-                    st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
+                    st.success("Results updated and tournament saved successfully!")
+                    
+                    # If matches were updated, rerun to refresh standings and inputs
+                    if match_updates_made:
+                        st.rerun()
+
+        st.markdown("---")
+        
+        # --- Standings Display ---
+        st.subheader("Current Standings 🏆")
+        standings = tournament.get_standings()
+        
+        data = []
+        for i, p in enumerate(standings):
+            data.append({
+                'Rank': i + 1,
+                'Player': p.name,
+                'Points': p.points,
+                'Wins': p.wins,
+                'Hoops For': p.hoops_scored,
+                'Hoops Against': p.hoops_conceded,
+                'Hoop Diff': p.hoops_scored - p.hoops_conceded
+            })
+        
+        standings_df = pd.DataFrame(data)
+        
+        # Style the DataFrame to highlight the top three
+        def highlight_top3(s):
+            is_top3 = s.index < 3
+            return ['background-color: #ffd70030' if v else '' for v in is_top3] # Light Gold background
+        
+        st.dataframe(
+            standings_df.style.apply(highlight_top3, subset=['Rank', 'Player', 'Points', 'Wins', 'Hoop Diff']),
+            hide_index=True,
+            use_container_width=True
+        )
+
+        st.markdown("---")
+
+        # --- Next Round Logic ---
+        current_round = len(tournament.rounds)
+        
+        if current_round < tournament.num_rounds:
+            st.subheader(f"Next Round: Round {current_round + 1}")
+            
+            # Check if all matches in the current (last generated) round have results
+            last_round_pairings = tournament.get_round_pairings(current_round - 1)
+            all_matches_completed = all(sum(match.get_scores()) > 0 for match in last_round_pairings if match and match.player2 is not None)
+            
+            if all_matches_completed:
+                st.success(f"Round {current_round} results are complete! Ready to generate pairings for Round {current_round + 1}.")
+                
+                if st.button(f"Generate Pairings for Round {current_round + 1}", key="generate_next_round", disabled=is_locked_bool):
+                    # Generate the next round pairings based on current standings and opponent history
+                    tournament.generate_round_pairings(current_round, initial=False)
+                    st.success(f"Pairings for Round {current_round + 1} generated successfully.")
                     st.rerun()
+            else:
+                st.warning(f"Results for Round {current_round} must be entered and saved before generating Round {current_round + 1}.")
+        else:
+            st.success("✅ Tournament Complete! All scheduled rounds have been played.")
+            
+        st.markdown("---")
+        
+        # --- Export Data ---
+        st.subheader("Export Data")
+        export_col1, export_col2 = st.columns(2)
+        
+        # Export CSV
+        csv_filename = export_to_csv(tournament, st.session_state.tournament_name)
+        if csv_filename:
+            with open(csv_filename, "r", newline="") as f:
+                csv_data = f.read().encode('utf-8')
+            export_col1.download_button(
+                label="Download CSV ⬇️",
+                data=csv_data,
+                file_name=csv_filename,
+                mime="text/csv",
+                key="download_csv"
+            )
 
-        with col_export1:
-            # EXPORT is generally a "read-only" action, so typically NOT disabled by a lock.
-            if st.button("Generate CSV", key="csv_button"):
-                filename = export_to_csv(tournament, st.session_state.tournament_name)
-                if filename:
-                    with open(filename, 'rb') as f:
-                        st.download_button(
-                            label="Download CSV",
-                            data=f.read(),
-                            file_name=filename,
-                            mime='text/csv'
-                        )
-                    os.remove(filename)
+        # Export Excel
+        excel_filename = export_to_excel(tournament, st.session_state.tournament_name)
+        if excel_filename:
+            with open(excel_filename, "rb") as f:
+                excel_data = f.read()
+            export_col2.download_button(
+                label="Download Excel ⬇️",
+                data=excel_data,
+                file_name=excel_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_excel"
+            )
 
-        with col_export2:
-            # EXPORT is generally a "read-only" action, so typically NOT disabled by a lock.
-            if st.button("Generate Excel", key="excel_button"):
-                filename = export_to_excel(tournament, st.session_state.tournament_name)
-                if filename:
-                    with open(filename, 'rb') as f:
-                        st.download_button(
-                            label="Download Excel",
-                            data=f.read(),
-                            file_name=filename,
-                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                        )
-                    os.remove(filename)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
