@@ -60,7 +60,6 @@ class SwissTournament:
         self.num_rounds = num_rounds
         self.rounds = []
         
-        # Generate pairings for ALL rounds immediately
         for round_num in range(self.num_rounds):
             initial = (round_num == 0)
             self.generate_round_pairings(round_num, initial=initial) 
@@ -247,10 +246,8 @@ def increment_score(key, step, max_value):
 
 # --- Streamlit UI and Logic ---
 
-def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
+def number_input_with_buttons(label, key, min_value=0, max_value=26, step=1):
     input_key = f"{key}_input"
-
-    # We rely on st.session_state[input_key] being pre-set in main()
 
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -263,12 +260,12 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
         ) 
 
     with col2:
-        # Use the pre-set session state value for the widget
+        # 🟢 DEFINITIVE FIX: Removed the 'value' parameter. 
+        # Streamlit now correctly initializes from st.session_state[input_key].
         st.number_input(
             label,
             min_value=min_value,
             max_value=max_value,
-            value=st.session_state[input_key], 
             step=step,
             format="%d",
             key=input_key
@@ -282,7 +279,9 @@ def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, st
             args=(key, step, max_value)
         )
     
-    return int(st.session_state[input_key])
+    # Return the current value stored by Streamlit in the session state
+    # Use .get() to avoid errors if somehow the key isn't set (though pre-sync should prevent this)
+    return int(st.session_state.get(input_key, 0))
 
 
 def main():
@@ -327,7 +326,7 @@ def main():
         
         score_keys_to_update = [] 
         
-        # 🟢 FIX: PRE-SYNCHRONIZE SESSION STATE before widget creation
+        # 🟢 FIX: PRE-SYNCHRONIZE SESSION STATE before widget creation (REQUIRED for single-click submit)
         for round_num in range(tournament.num_rounds):
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
@@ -372,7 +371,6 @@ def main():
                     number_input_with_buttons(
                         label=f"Hoops for {match.player1.name}",
                         key=hoops1_key,
-                        value=0, # Value is ignored but required; state is managed by pre-sync
                         min_value=0, max_value=26
                     )
                     
@@ -380,7 +378,6 @@ def main():
                     number_input_with_buttons(
                         label=f"Hoops for {match.player2.name}",
                         key=hoops2_key,
-                        value=0, # Value is ignored but required; state is managed by pre-sync
                         min_value=0, max_value=26
                     )
                 
