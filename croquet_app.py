@@ -5,6 +5,7 @@ import random
 import itertools
 import csv
 import os
+import json
 from datetime import datetime
 from collections import Counter
 import uuid
@@ -14,16 +15,20 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Database and JSON file paths
+DB_PATH = os.getenv("TOURNAMENT_DB_PATH", "tournament.db")
+JSON_EXPORT_PATH = "tournaments_export.json"
+
 # --- Player and Match Classes (Unchanged) ---
 
 class Player:
     def __init__(self, id, name):
         self.id = id
         self.name = name
-        self.points = 0  
-        self.wins = 0  
-        self.hoops_scored = 0  
-        self.hoops_conceded = 0 
+        self.points = 0
+        self.wins = 0
+        self.hoops_scored = 0
+        self.hoops_conceded = 0
         self.opponents = set()
 
     def add_opponent(self, opponent_id):
@@ -66,10 +71,10 @@ class SwissTournament:
             self.rounds = []
             for round_num in range(num_rounds):
                 initial = (round_num == 0)
-                self.generate_round_pairings(round_num, initial=initial) 
+                self.generate_round_pairings(round_num, initial=initial)
         else:
             self.players = players_names_or_objects
-            self.rounds = [] 
+            self.rounds = []
             
         self.num_rounds = num_rounds
         
@@ -77,12 +82,12 @@ class SwissTournament:
         while len(self.rounds) <= round_num:
             self.rounds.append([])
         
-        self.rounds[round_num] = [] 
+        self.rounds[round_num] = []
         round_pairings = []
         
         if initial:
             available_players = self.players.copy()
-            random.shuffle(available_players) 
+            random.shuffle(available_players)
         else:
             available_players = self.get_standings()
         
@@ -115,7 +120,7 @@ class SwissTournament:
         self.rounds[round_num] = round_pairings
         
         if len(used_players) + len(remaining_players) != len(self.players):
-             st.warning(f"Warning: Only {len(used_players) + len(remaining_players)}/{len(self.players)} players paired in round {round_num + 1} due to opponent restrictions.")
+            st.warning(f"Warning: Only {len(used_players) + len(remaining_players)}/{len(self.players)} players paired in round {round_num + 1} due to opponent restrictions.")
 
     def record_result(self, round_num, match_num, hoops1, hoops2):
         if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num]):
@@ -150,32 +155,20 @@ class SwissTournament:
 
 # --- Database Functions ---
 
-DB_PATH = os.getenv("TOURNAMENT_DB_PATH", "tournament.db")
-
 def get_db_mtime(db_path=DB_PATH):
     try:
-        if os.path.exists(db_path):
-            return os.path.getmtime(db_path)
-        logger.warning(f"Database file {db_path} does not exist.")
-        return 0.0
-    except OSError as e:
-        logger.error(f"Error accessing database file {db_path}: {e}")
-        st.error(f"Error accessing database file: {e}")
-        return 0.0
+        return os.path.getmtime(db_path)
+    except FileNotFoundError:
+        return 0
 
 def init_db(db_path=DB_PATH):
     try:
-        db_dir = os.path.dirname(db_path) or '.'
-        if not os.access(db_dir, os.W_OK):
-            logger.error(f"No write permissions for directory {db_dir}")
-            st.error(f"No write permissions for directory {db_dir}. Please ensure the app has write access.")
-            return None
-        
+        logger.info(f"Using database path: {db_path}")
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         
         c.execute('''CREATE TABLE IF NOT EXISTS tournaments
-                     (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, date TEXT)''')
                      
         c.execute('''CREATE TABLE IF NOT EXISTS players
                      (tournament_id INTEGER, player_id INTEGER, name TEXT, 
@@ -194,9 +187,9 @@ def init_db(db_path=DB_PATH):
         logger.error(f"Database initialization error: {e}")
         st.error(f"Database initialization error: {e}")
         return None
-    except OSError as e:
-        logger.error(f"File system error: {e}")
-        st.error(f"File system error: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        st.error(f"Unexpected error: {e}")
         return None
 
 def save_to_db(tournament, tournament_name, conn):
@@ -236,6 +229,16 @@ def save_to_db(tournament, tournament_name, conn):
         c.execute("SELECT id, name, date FROM tournaments")
         tournaments = c.fetchall()
         logger.debug(f"Tournaments after save: {tournaments}")
+        
+        # Auto-export to JSON after save
+        export_success = export_tournaments_to_json(tournament_id)
+        if export_success:
+            logger.info(f"Auto-exported tournaments to {JSON_EXPORT_PATH}")
+            st.success(f"Tournament '{tournament_name}' saved and exported to JSON! Download and commit to GitHub.")
+        else:
+            logger.error("Failed to auto-export tournaments to JSON")
+            st.error("Failed to export tournaments to JSON. Download manually if needed.")
+        
         st.cache_data.clear()
         logger.info(f"Tournament '{tournament_name}' saved with ID {tournament_id}")
         return tournament_id
@@ -264,6 +267,15 @@ def delete_tournament_from_db(tournament_id, db_path=DB_PATH):
         conn.commit()
         st.cache_data.clear()
         logger.info(f"Tournament ID {tournament_id} deleted successfully")
+        
+        # Re-export JSON after deletion
+        export_success = export_tournaments_to_json(tournament_id)
+        if export_success:
+            logger.info(f"Updated {JSON_EXPORT_PATH} after deleting tournament ID {tournament_id}")
+        else:
+            logger.error("Failed to update JSON export after deletion")
+            st.error("Failed to update JSON export after deletion")
+        
         return True
     except sqlite3.Error as e:
         logger.error(f"Database error on delete: {e}")
@@ -279,11 +291,6 @@ def delete_tournament_from_db(tournament_id, db_path=DB_PATH):
 @st.cache_data(show_spinner="Refreshing tournament list...")
 def load_tournaments_list(db_mtime, db_path=DB_PATH, _cache_buster=str(uuid.uuid4())):
     try:
-        if not os.path.exists(db_path):
-            logger.warning(f"Database file {db_path} does not exist")
-            st.warning(f"Database file {db_path} does not exist")
-            return []
-        
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
         c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
@@ -351,7 +358,8 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         
         players_list = list(player_map.values())
 
-        num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
+        c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,))
+        num_rounds_query = c.fetchone()
         num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
         
         tournament = SwissTournament(players_list, num_rounds)
@@ -395,6 +403,98 @@ def load_tournament_data(tournament_id, db_path=DB_PATH):
         logger.error(f"Unexpected error loading tournament {tournament_id}: {e}")
         st.error(f"Unexpected error loading tournament {tournament_id}: {e}")
         return None, None, None
+
+# --- JSON Export/Import Functions ---
+
+def export_tournaments_to_json(excluded_id=None):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT id, name, date FROM tournaments")
+        tournaments = c.fetchall()
+        
+        export_data = []
+        for t_id, name, date in tournaments:
+            if excluded_id and t_id == excluded_id:
+                continue
+                
+            c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id = ?", (t_id,))
+            players = c.fetchall()
+            
+            c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ?", (t_id,))
+            matches = c.fetchall()
+            
+            export_data.append({
+                "id": t_id,
+                "name": name,
+                "date": date,
+                "players": [
+                    {
+                        "player_id": p[0],
+                        "name": p[1],
+                        "points": p[2],
+                        "wins": p[3],
+                        "hoops_scored": p[4],
+                        "hoops_conceded": p[5]
+                    } for p in players
+                ],
+                "matches": [
+                    {
+                        "round_num": m[0],
+                        "match_num": m[1],
+                        "player1_id": m[2],
+                        "player2_id": m[3],
+                        "hoops1": m[4],
+                        "hoops2": m[5]
+                    } for m in matches
+                ]
+            })
+        
+        conn.close()
+        
+        with open(JSON_EXPORT_PATH, 'w') as f:
+            json.dump(export_data, f, indent=2)
+        
+        return True
+    except (sqlite3.Error, IOError) as e:
+        logger.error(f"Error exporting tournaments to JSON: {e}")
+        return False
+
+def import_tournaments_from_json(file, db_path=DB_PATH):
+    try:
+        data = json.load(file)
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        
+        for tournament in data:
+            c.execute("SELECT id FROM tournaments WHERE id = ?", (tournament['id'],))
+            if c.fetchone():
+                c.execute("DELETE FROM players WHERE tournament_id = ?", (tournament['id'],))
+                c.execute("DELETE FROM matches WHERE tournament_id = ?", (tournament['id'],))
+                c.execute("DELETE FROM tournaments WHERE id = ?", (tournament['id'],))
+            
+            c.execute("INSERT INTO tournaments (id, name, date) VALUES (?, ?, ?)", 
+                     (tournament['id'], tournament['name'], tournament['date']))
+            
+            c.executemany("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         [(tournament['id'], p['player_id'], p['name'], p['points'], p['wins'], p['hoops_scored'], p['hoops_conceded']) for p in tournament['players']])
+            
+            c.executemany("INSERT INTO matches (tournament_id, round_num, match_num, player1_id, player2_id, hoops1, hoops2) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         [(tournament['id'], m['round_num'], m['match_num'], m['player1_id'], m['player2_id'], m['hoops1'], m['hoops2']) for m in tournament['matches']])
+        
+        conn.commit()
+        conn.close()
+        st.cache_data.clear()
+        logger.info("Tournaments imported from JSON successfully")
+        return True
+    except (sqlite3.Error, json.JSONDecodeError) as e:
+        logger.error(f"Error importing tournaments from JSON: {e}")
+        st.error(f"Error importing tournaments from JSON: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error importing tournaments: {e}")
+        st.error(f"Unexpected error importing tournaments: {e}")
+        return False
 
 # --- Export Functions (Unchanged) ---
 
@@ -523,13 +623,10 @@ def handle_lock_change():
 
 def check_database_content(db_path=DB_PATH):
     try:
-        if not os.path.exists(db_path):
-            return "Database file does not exist."
-        
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
-        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tournaments'")
-        if not c.fetchone():
+        c.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'tournaments')")
+        if not c.fetchone()[0]:
             conn.close()
             return "Tournaments table does not exist."
         
@@ -546,8 +643,32 @@ def check_database_content(db_path=DB_PATH):
     except Exception as e:
         return f"Unexpected error: {e}"
 
+def auto_import_json():
+    """Check for tournaments_export.json on startup and import it."""
+    if os.path.exists(JSON_EXPORT_PATH):
+        try:
+            with open(JSON_EXPORT_PATH, 'rb') as f:
+                if import_tournaments_from_json(f):
+                    logger.info(f"Auto-imported tournaments from {JSON_EXPORT_PATH}")
+                    st.session_state['auto_import_status'] = f"Restored tournaments from {JSON_EXPORT_PATH}"
+                    st.cache_data.clear()
+                else:
+                    logger.error(f"Failed to auto-import from {JSON_EXPORT_PATH}")
+                    st.session_state['auto_import_status'] = f"Failed to restore tournaments from {JSON_EXPORT_PATH}"
+        except Exception as e:
+            logger.error(f"Error during auto-import: {e}")
+            st.session_state['auto_import_status'] = f"Error during auto-import: {e}"
+    else:
+        logger.info(f"No {JSON_EXPORT_PATH} found for auto-import")
+        st.session_state['auto_import_status'] = f"No {JSON_EXPORT_PATH} found"
+
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
+    logger.info(f"Starting app with database path: {DB_PATH}")
+    
+    # Auto-import JSON on startup
+    if 'auto_import_status' not in st.session_state:
+        auto_import_json()
     
     st.markdown("""
         <style>
@@ -604,6 +725,7 @@ def main():
         st.session_state.loaded_id = None
         st.session_state.is_locked = "Unlocked"
         st.session_state._lock_changed = False
+        st.session_state.auto_import_status = ""
         
     is_locked_bool = (st.session_state.is_locked == "Locked")
     
@@ -618,6 +740,13 @@ def main():
     with st.sidebar:
         st.header("App Status")
         
+        # Display auto-import status
+        if st.session_state.auto_import_status:
+            if "Restored" in st.session_state.auto_import_status:
+                st.success(st.session_state.auto_import_status)
+            else:
+                st.warning(st.session_state.auto_import_status)
+        
         st.session_state.is_locked = st.radio(
             "Tournament Input Status",
             ["Unlocked", "Locked"],
@@ -630,7 +759,7 @@ def main():
         st.header("Load Saved Tournament")
         conn = init_db()
         if conn is None:
-            st.error("Failed to initialize database. Check file permissions.")
+            st.error("Failed to initialize database. Check database path and permissions.")
         else:
             conn.close()
         
@@ -644,6 +773,41 @@ def main():
             st.cache_data.clear()
             st.success("Tournament list refreshed!")
             st.rerun()
+        
+        st.subheader("Import/Export Tournaments")
+        if os.path.exists(JSON_EXPORT_PATH):
+            with open(JSON_EXPORT_PATH, 'rb') as f:
+                st.download_button(
+                    label="Download JSON Export",
+                    data=f.read(),
+                    file_name=JSON_EXPORT_PATH,
+                    mime="application/json",
+                    key="download_json_button"
+                )
+        
+        uploaded_file = st.file_uploader("Import Tournaments from JSON", type=["json"], key="import_json")
+        if uploaded_file and st.button("Import JSON", key="import_json_button"):
+            if import_tournaments_from_json(uploaded_file):
+                st.success("Tournaments imported successfully! Reloading page...")
+                # Update JSON export after import
+                export_tournaments_to_json()
+                st.rerun()
+            else:
+                st.error("Failed to import tournaments.")
+        
+        st.subheader("Sync with GitHub")
+        st.markdown("""
+            **To persist tournaments:**
+            1. Click "Save Tournament" to save and auto-export to JSON.
+            2. Download `tournaments_export.json` (above).
+            3. Commit to your GitHub repository with:
+            ```bash
+            git add tournaments_export.json
+            git commit -m "Update tournament data"
+            git push origin main
+            ```
+            4. On app restart, ensure `tournaments_export.json` is in the repository for auto-import.
+        """)
         
         db_mtime = get_db_mtime()
         tournaments_list = load_tournaments_list(db_mtime)
@@ -906,10 +1070,12 @@ def main():
                     tournament_id = save_to_db(tournament, st.session_state.tournament_name, conn)
                     if tournament_id:
                         st.session_state.loaded_id = tournament_id
-                        st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
+                        st.success(f"Tournament '{st.session_state.tournament_name}' saved and exported to JSON! Download and commit to GitHub.")
                         st.rerun()
                     else:
                         st.error("Failed to save tournament to database.")
+                else:
+                    st.error("Failed to initialize database.")
 
         with col_export1:
             if st.button("Generate CSV", key="csv_button"):
