@@ -436,7 +436,7 @@ def main():
         """, unsafe_allow_html=True)
     # --- End Custom CSS ---
     
-    st.title("Croquet Tournament Manager 🏏 (Swiss System, No Draws)")
+    st.title("ACC Croquet Tournament Manager (Random, No Draws)")
 
     # Initialize state variables
     if 'tournament' not in st.session_state:
