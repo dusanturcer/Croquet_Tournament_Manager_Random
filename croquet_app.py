@@ -239,7 +239,7 @@ def delete_tournament_from_db(tournament_id, db_path=DB_PATH):
         return False
 
 @st.cache_data(show_spinner="Refreshing tournament list...")
-def load_tournaments_list(db_mtime, db_path=DB_PATH): # Added db_mtime as a cache input
+def load_tournaments_list(db_mtime, db_path=DB_PATH): 
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
@@ -407,7 +407,7 @@ def load_selected_tournament(selected_id):
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     
-    # --- Custom CSS (MODIFIED) ---
+    # --- Custom CSS (MODIFIED for highlighting fix) ---
     st.markdown("""
         <style>
         /* Green Button Styles (General Buttons) */
@@ -466,11 +466,12 @@ def main():
         }
 
         /* NEW: Highlight class for completed rounds */
-        .round-complete > div[data-testid="stExpander"] {
-            background-color: #E6F7E6; /* Light Green background */
-            border-left: 5px solid #4CAF50; /* Green border for emphasis */
-            border-radius: 5px;
-            padding: 5px;
+        /* Target the parent container of the expander and drill down to the Streamlit expander element */
+        .round-complete-container > div:first-child > div:first-child > div:first-child {
+            background-color: #E6F7E6 !important; /* Light Green background */
+            border-left: 5px solid #4CAF50 !important; /* Green border for emphasis */
+            border-radius: 5px !important;
+            padding: 5px !important;
         }
 
         </style>
@@ -635,7 +636,8 @@ def main():
                 
                 # Apply the highlight class if complete
                 if is_round_complete:
-                    round_container.markdown(f'<div class="round-complete">', unsafe_allow_html=True)
+                    # Apply a class to the container when complete
+                    round_container.markdown(f'<div class="round-complete-container">', unsafe_allow_html=True)
                 
                 with round_container.expander(round_label, expanded=expanded_state):
                     
