@@ -102,6 +102,8 @@ class SwissTournament:
                 p1.add_opponent(best_p2.id)
                 best_p2.add_opponent(p1.id)
             
+            # ... (BYE logic removed for brevity but present in original)
+            
         remaining_players = [p for p in available_players if p.id not in used_players]
         if remaining_players:
             bye_player = remaining_players[0]
@@ -367,57 +369,69 @@ def export_to_excel(tournament, tournament_name):
 # --- Streamlit UI and Logic (Main Function) ---
 # ----------------------------------------------------------------------
 
-# MODIFIED: Use st.text_input to allow the field to be visually empty for zero scores.
-def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
-    input_key = f"{key}_input"
-
-    # 1. Get current score. If it's 0, set the display value to an empty string.
-    # The session state stores the integer value (0 for empty/invalid input).
-    current_value = st.session_state.get(input_key, 0)
-    display_value = "" if current_value == 0 else str(current_value)
-
-    # 2. Use st.text_input instead of st.number_input
-    # IMPORTANT: The on_change callback is what caused the original error inside st.form.
-    # Since we are calling this function OUTSIDE the form now, it is safe.
-    text_value = st.text_input(
-        label,
-        value=display_value,
-        max_chars=2, # Max score of 26 needs max 2 chars
-        key=input_key,
-        help="Enter score. Max 26.",
-        
-        # This callback function is crucial: it runs AFTER the text input changes.
-        on_change=lambda: _update_session_state_to_int(input_key, min_value, max_value)
-    )
-    
-    # Return the integer value, defaulting to 0 if the field is empty or non-numeric
-    return int(st.session_state.get(input_key, 0))
-
-def _update_session_state_to_int(key, min_value, max_value):
-    """Callback function to convert the text input to a clean integer."""
-    raw_value = st.session_state[key]
+def _update_session_state_to_int(text_key, result_key, min_value, max_value):
+    """
+    Callback function to convert the text input to a clean integer.
+    It reads from text_key (string) and writes the cleaned integer to result_key (int).
+    """
+    # Read the raw string value from the st.text_input key
+    raw_value = st.session_state[text_key]
     
     if isinstance(raw_value, str):
         raw_value = raw_value.strip()
     
     if not raw_value:
-        st.session_state[key] = 0
+        st.session_state[result_key] = 0
     else:
         try:
-            # Convert the valid number string to an integer
             num = int(raw_value)
             
             # Apply bounds checking
             if num < min_value:
-                st.session_state[key] = min_value
+                st.session_state[result_key] = min_value
             elif num > max_value:
-                st.session_state[key] = max_value
+                st.session_state[result_key] = max_value
             else:
-                st.session_state[key] = num
+                st.session_state[result_key] = num
                 
         except ValueError:
-            # If the user enters non-numeric text, reset to 0
-            st.session_state[key] = 0
+            # If the user enters non-numeric text, reset result to 0
+            st.session_state[result_key] = 0
+            
+# Updated number_input_simple function
+def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
+    
+    # Define two separate keys: one for the raw string input, one for the clean integer result
+    text_key = f"{key}_text" 
+    result_key = f"{key}_result" 
+
+    # 1. Get current clean integer result. 
+    current_value_int = st.session_state.get(result_key, 0)
+    
+    # 2. Determine the string to DISPLAY in the box. 
+    # This must be a string. We use the stored integer result to decide if the box should be empty.
+    if text_key not in st.session_state or st.session_state[text_key] == "":
+        display_value = "" if current_value_int == 0 else str(current_value_int)
+    else:
+        # If the user is actively typing, let the raw string from the session state persist
+        display_value = st.session_state[text_key]
+
+
+    # 3. Render the st.text_input using text_key for its string value.
+    st.text_input(
+        label,
+        value=display_value,
+        max_chars=2, 
+        key=text_key, # This key stores the raw string input (must be a string)
+        help="Enter score. Max 26.",
+        
+        # Callback updates the separate result_key (must store an int)
+        on_change=lambda: _update_session_state_to_int(text_key, result_key, min_value, max_value)
+    )
+    
+    # 4. Return the clean integer result.
+    return int(st.session_state.get(result_key, 0))
+
 
 def load_selected_tournament(selected_id):
     if selected_id:
@@ -426,7 +440,7 @@ def load_selected_tournament(selected_id):
             
             # Clear all old match score states for the previous tournament
             for key in list(st.session_state.keys()):
-                # Delete both the default value (hoops1_...) and the input key (hoops1_..._input)
+                # Check for ALL keys related to score inputs
                 if key.startswith(("hoops1_", "hoops2_")):
                     del st.session_state[key]
             
@@ -580,7 +594,7 @@ def main():
         expander_state = False
         
     with st.expander("Create/Setup Tournament", expanded=expander_state):
-        with st.form("tournament_form"):
+        with st.form("tournament_form_setup"):
             st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name)
             player_input = st.text_area("Enter player names (one per line)", "\n".join(st.session_state.players))
             st.session_state.num_rounds = st.number_input("Number of Rounds", min_value=1, max_value=10, value=st.session_state.num_rounds, step=1)
@@ -593,7 +607,7 @@ def main():
                 else:
                     # Clear old score states from any previous tournament
                     for key in list(st.session_state.keys()):
-                        # Check for both the old number input keys and the new text input keys
+                        # Clear ALL score keys (text_key and result_key)
                         if key.startswith(("hoops1_", "hoops2_")):
                             if key in st.session_state:
                                 del st.session_state[key]
@@ -619,22 +633,23 @@ def main():
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
                 if match and match.player2 is not None:
-                    hoops1_key = f"hoops1_r{round_num}_m{match_num}"
-                    hoops2_key = f"hoops2_r{round_num}_m{match_num}"
-                    input1_key = f"{hoops1_key}_input"
-                    input2_key = f"{hoops2_key}_input"
+                    hoops1_key_root = f"hoops1_r{round_num}_m{match_num}"
+                    hoops2_key_root = f"hoops2_r{round_num}_m{match_num}"
+                    
+                    result1_key = f"{hoops1_key_root}_result"
+                    result2_key = f"{hoops2_key_root}_result"
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
                     # Initialize Streamlit session state with current DB values (as integers)
-                    # The number_input_simple function handles displaying 0 as ""
-                    if input1_key not in st.session_state:
-                        st.session_state[input1_key] = current_hoops1
+                    # We only need to initialize the RESULT key with the DB value.
+                    if result1_key not in st.session_state:
+                        st.session_state[result1_key] = current_hoops1
                     
-                    if input2_key not in st.session_state:
-                        st.session_state[input2_key] = current_hoops2
+                    if result2_key not in st.session_state:
+                        st.session_state[result2_key] = current_hoops2
                         
-                    score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
+                    score_keys_to_update.append((round_num, match_num, hoops1_key_root, hoops2_key_root))
 
         # RENDER INPUTS (OUTSIDE THE FORM)
         for round_num in range(tournament.num_rounds):
@@ -645,7 +660,7 @@ def main():
             if not non_bye_matches:
                 continue
             
-            # Check if ALL matches have at least one non-zero score recorded.
+            # Check if ALL matches have at least one non-zero score recorded (using clean results from the Match object).
             is_round_complete = all(sum(m.get_scores()) > 0 for m in non_bye_matches)
 
             round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
@@ -672,8 +687,12 @@ def main():
                     except StopIteration:
                         continue
 
-                    hoops1_key = match_info[2]
-                    hoops2_key = match_info[3]
+                    hoops1_key_root = match_info[2]
+                    hoops2_key_root = match_info[3]
+                    
+                    # Get the clean integer result keys for metric display
+                    result1_key = f"{hoops1_key_root}_result"
+                    result2_key = f"{hoops2_key_root}_result"
                     
                     with current_match_col:
                         
@@ -686,11 +705,11 @@ def main():
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_h1:
-                            # Input component now updates session state instantly via callback
-                            live_hoops1 = number_input_simple(key=hoops1_key)
+                            # number_input_simple returns the clean integer result
+                            live_hoops1 = number_input_simple(key=hoops1_key_root)
                         
                         with col_h2:
-                            live_hoops2 = number_input_simple(key=hoops2_key)
+                            live_hoops2 = number_input_simple(key=hoops2_key_root)
                         
                         with col_p2:
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player2.name}</h4>**", unsafe_allow_html=True)
@@ -735,21 +754,21 @@ def main():
                     p.hoops_scored = 0
                     p.hoops_conceded = 0
                 
-                # Reapply results using the values from session state (which were updated by the inputs above)
+                # Reapply results using the values from the new result_key in session state
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
                     if match is None or match.player2 is None: continue
                     
-                    hoops1_key = f"{hoops1_key_root}_input"
-                    hoops2_key = f"{hoops2_key_root}_input"
+                    # Use the clean integer result keys
+                    result1_key = f"{hoops1_key_root}_result"
+                    result2_key = f"{hoops2_key_root}_result"
                     
                     # Ensure we use the cleaned integer value from the session state
-                    hoops1 = st.session_state.get(hoops1_key, 0)
-                    hoops2 = st.session_state.get(hoops2_key, 0)
+                    hoops1 = st.session_state.get(result1_key, 0)
+                    hoops2 = st.session_state.get(result2_key, 0)
                     
                     if hoops1 == hoops2 and hoops1 > 0:
-                         # Warning changed to only trigger if non-zero equal scores are entered
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded.")
                     
                     # Temporarily reset match.result to None to allow record_result to function as a set/reset
