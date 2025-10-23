@@ -242,11 +242,13 @@ def increment_score(key, step, max_value):
     st.session_state[input_key] = min(max_value, current_value + step)
 
 
-# --- Streamlit UI and Logic (Unchanged) ---
+# --- Streamlit UI and Logic ---
 
-def number_input_with_buttons(label, key, min_value=0, max_value=26, step=1):
+def number_input_with_buttons(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
+    # Use a single, compact column layout for the buttons and input field
+    # [ - ] [ Input Field ] [ + ]
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
@@ -254,12 +256,13 @@ def number_input_with_buttons(label, key, min_value=0, max_value=26, step=1):
             "−", 
             key=f"minus_{key}",
             on_click=decrement_score, 
-            args=(key, step, min_value)
+            args=(key, step, min_value),
+            # Use a smaller size for the button if possible (Streamlit doesn't natively support size directly, but columns help)
         ) 
 
     with col2:
         st.number_input(
-            label,
+            label, # Empty label to save space
             min_value=min_value,
             max_value=max_value,
             step=step,
@@ -341,66 +344,54 @@ def main():
                         
                     score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
-        # 2. Display Block with Consolidated BYE Information
+        # 2. Display Block with Compact Layout and NO BYE info
         for round_num in range(tournament.num_rounds):
             round_pairings = tournament.get_round_pairings(round_num)
             
-            # Identify BYE players for display in the expander title
-            bye_players = [match.player1.name for match in round_pairings if match.player2 is None]
+            non_bye_matches = [m for m in round_pairings if m.player2 is not None]
             
-            label_suffix = f" ({len(round_pairings) - len(bye_players)} matches"
-            if bye_players:
-                 label_suffix += f", BYE: {', '.join(bye_players)})"
-            else:
-                 label_suffix += ")"
-                 
-            round_label = f"Round {round_num + 1} Pairings" + label_suffix
+            # If no competitive matches, skip the expander entirely.
+            if not non_bye_matches:
+                continue
+
+            round_label = f"Round {round_num + 1} ({len(non_bye_matches)} matches)"
             expanded_state = (round_num == 0)
             
             with st.expander(round_label, expanded=expanded_state):
                 
-                # Consolidated BYE Player list (most compact way)
-                if bye_players:
-                    st.markdown(f"**BYE:** {', '.join(bye_players)} (0 points awarded)")
-                    st.markdown("---") 
-
-                non_bye_matches = [m for m in round_pairings if m.player2 is not None]
                 match_display_num = 1
                 
-                # Loop through only competitive matches for detailed input display
                 for match_num, match in enumerate(round_pairings):
                     if match.player2 is None:
-                        # Skip detailed input display for BYE matches entirely
+                        # SKIP all BYE matches entirely
                         continue 
                         
-                    st.markdown("---") # Separator for individual matches
-                    
                     # Use the original key roots generated in the synchronization block
                     hoops1_key = f"hoops1_r{round_num}_m{match_num}"
                     hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                     
-                    col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
+                    # Layout: Match # | P1 Name | P1 Input | vs | P2 Input | P2 Name | Status
+                    col_num, col_p1, col_h1, col_vs, col_h2, col_p2, col_status = st.columns([0.5, 2, 1.5, 0.5, 1.5, 2, 1.5])
                     
-                    with col1:
-                        st.markdown(f"**Match {match_display_num}:**")
-                        st.markdown(f"**{match.player1.name}** vs **{match.player2.name}**")
-                        st.caption("*(Hoop scores must differ for a win point)*")
-                    
-                    with col2:
-                        number_input_with_buttons(
-                            label=f"Hoops for {match.player1.name}",
-                            key=hoops1_key,
-                            min_value=0, max_value=26
-                        )
+                    with col_num:
+                        st.markdown(f"**{match_display_num}:**")
                         
-                    with col3:
-                        number_input_with_buttons(
-                            label=f"Hoops for {match.player2.name}",
-                            key=hoops2_key,
-                            min_value=0, max_value=26
-                        )
+                    with col_p1:
+                        st.markdown(f"**{match.player1.name}**")
+                        
+                    with col_h1:
+                        number_input_with_buttons(key=hoops1_key)
+                        
+                    with col_vs:
+                        st.markdown("vs")
+                        
+                    with col_h2:
+                        number_input_with_buttons(key=hoops2_key)
                     
-                    with col4:
+                    with col_p2:
+                        st.markdown(f"**{match.player2.name}**")
+                        
+                    with col_status:
                         # Instant Score Marking Logic
                         input1_key = f"{hoops1_key}_input"
                         input2_key = f"{hoops2_key}_input"
@@ -408,54 +399,50 @@ def main():
                         live_hoops1 = st.session_state.get(input1_key, 0)
                         live_hoops2 = st.session_state.get(input2_key, 0)
 
-                        status = "Not Recorded"
+                        status_text = f"{live_hoops1} - {live_hoops2}"
                         
-                        if live_hoops1 != 0 or live_hoops2 != 0:
-                            status = "Draw (0 pts)"
-                            
-                            if live_hoops1 > live_hoops2:
-                                status = f"Winner: {match.player1.name}"
-                            elif live_hoops2 > live_hoops1:
-                                status = f"Winner: {match.player2.name}"
-                                
-                            st.metric(label="Current Score", value=f"{live_hoops1} - {live_hoops2}", delta=status)
-                        elif match.result:
-                            # Show saved result if live scores are 0-0 but a result was recorded
-                            status = "Draw (0 pts)"
-                            if match.result[0] > match.result[1]:
-                                status = f"Winner: {match.player1.name}"
-                            elif match.result[1] > match.result[0]:
-                                status = f"Winner: {match.player2.name}"
-                            st.metric(label="Current Score", value=f"{match.result[0]} - {match.result[1]}", delta=status)
+                        if live_hoops1 > live_hoops2:
+                            status_delta = "P1 Wins"
+                        elif live_hoops2 > live_hoops1:
+                            status_delta = "P2 Wins"
+                        elif live_hoops1 == live_hoops2 and (live_hoops1 > 0):
+                            status_delta = "Draw (0 pts)"
                         else:
-                            st.metric(label="Current Score", value="Not Recorded")
+                            status_delta = " " # Empty delta if 0-0
+
+                        st.metric(label="Score", value=status_text, delta=status_delta)
                             
+                    st.markdown("---")
                     match_display_num += 1
 
 
         # --- The Submission Form (Unchanged) ---
         with st.form("results_submission_form"):
             st.markdown("---")
-            results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
+            st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
-            if results_submitted:
+            # Recalculation logic moved outside the button press check
+            # Streamlit reruns on input, but tournament updates only happen on form submit
+            for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
+                match = tournament.get_round_pairings(round_num)[match_num]
                 
-                for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
-                    match = tournament.get_round_pairings(round_num)[match_num]
-                    
-                    hoops1_key = f"{hoops1_key_root}_input"
-                    hoops2_key = f"{hoops2_key_root}_input"
-                    
-                    hoops1 = st.session_state.get(hoops1_key, 0)
-                    hoops2 = st.session_state.get(hoops2_key, 0)
-                    
+                hoops1_key = f"{hoops1_key_root}_input"
+                hoops2_key = f"{hoops2_key_root}_input"
+                
+                hoops1 = st.session_state.get(hoops1_key, 0)
+                hoops2 = st.session_state.get(hoops2_key, 0)
+                
+                # Check for updates only if the form was submitted
+                if st.session_state.get("results_submission_form", False):
                     if hoops1 == hoops2 and match.player2 is not None:
                         st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
                         
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
 
+            if st.session_state.get("results_submission_form", False):
                 st.success("All visible match results updated! Standings recalculated.")
+                st.session_state["results_submission_form"] = False # Reset the form state
 
         # --- Standings (Unchanged) ---
         st.subheader("Current Standings 🏆")
