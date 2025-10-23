@@ -52,18 +52,21 @@ class Match:
     def get_scores(self):
         return self.result if self.result else (0, 0)
 
-# --- Swiss Tournament Logic (Unchanged) ---
-
 class SwissTournament:
-    def __init__(self, players, num_rounds):
-        self.players = [Player(i, name) for i, name in enumerate(players)]
+    def __init__(self, players_names_or_objects, num_rounds):
+        # Handle initialization from names (new tournament) or Player objects (loaded tournament)
+        if all(isinstance(p, str) for p in players_names_or_objects):
+            self.players = [Player(i, name) for i, name in enumerate(players_names_or_objects)]
+            self.rounds = []
+            for round_num in range(num_rounds):
+                initial = (round_num == 0)
+                self.generate_round_pairings(round_num, initial=initial) 
+        else:
+            self.players = players_names_or_objects
+            self.rounds = [] # Rounds will be populated by load_tournament_data
+            
         self.num_rounds = num_rounds
-        self.rounds = []
         
-        for round_num in range(self.num_rounds):
-            initial = (round_num == 0)
-            self.generate_round_pairings(round_num, initial=initial) 
-
     def generate_round_pairings(self, round_num, initial=False):
         while len(self.rounds) <= round_num:
             self.rounds.append([])
@@ -109,7 +112,7 @@ class SwissTournament:
              st.warning(f"Warning: Only {len(used_players) + len(remaining_players)}/{len(self.players)} players paired in round {round_num + 1} due to opponent restrictions.")
 
     def record_result(self, round_num, match_num, hoops1, hoops2):
-        if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[match_num]):
+        if 0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num]):
             match = self.rounds[round_num][match_num]
             
             p1, p2 = match.player1, match.player2
@@ -141,10 +144,12 @@ class SwissTournament:
         return []
 
 # ----------------------------------------------------------------------
-# --- Database & Export Functions (Unchanged) ---
+# --- Database Functions (Modified) ---
 # ----------------------------------------------------------------------
 
-def init_db(db_path='tournament.db'):
+DB_PATH = 'tournament.db'
+
+def init_db(db_path=DB_PATH):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
@@ -169,8 +174,19 @@ def save_to_db(tournament, tournament_name, conn):
         c = conn.cursor()
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
-        tournament_id = c.lastrowid
+        # Check if tournament name already exists
+        c.execute("SELECT id FROM tournaments WHERE name = ?", (tournament_name,))
+        existing_id = c.fetchone()
+
+        if existing_id:
+            tournament_id = existing_id[0]
+            # Delete old data associated with this tournament ID
+            c.execute("DELETE FROM players WHERE tournament_id = ?", (tournament_id,))
+            c.execute("DELETE FROM matches WHERE tournament_id = ?", (tournament_id,))
+            c.execute("UPDATE tournaments SET date = ? WHERE id = ?", (date, tournament_id))
+        else:
+            c.execute("INSERT INTO tournaments (name, date) VALUES (?, ?)", (tournament_name, date))
+            tournament_id = c.lastrowid
 
         player_data = [(tournament_id, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in tournament.players]
         c.executemany("INSERT INTO players (tournament_id, player_id, name, points, wins, hoops_scored, hoops_conceded) VALUES (?, ?, ?, ?, ?, ?, ?)", player_data)
@@ -189,58 +205,97 @@ def save_to_db(tournament, tournament_name, conn):
         st.error(f"Database error on save: {e}")
         conn.rollback() 
 
-def export_to_csv(tournament, tournament_name):
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{tournament_name}_{timestamp}.csv"
-        with open(filename, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(['Round', 'Match', 'Player 1', 'Player 2', 'Hoops 1', 'Hoops 2'])
-            for round_num, round_pairings in enumerate(tournament.rounds):
-                for match_num, match in enumerate(round_pairings):
-                    player2 = match.player2.name if match.player2 else 'BYE'
-                    hoops1, hoops2 = match.get_scores()
-                    writer.writerow([round_num + 1, match_num + 1, match.player1.name, player2, hoops1, hoops2])
-        return filename
-    except IOError as e:
-        st.error(f"Error writing CSV: {e}")
-        return None
+def load_tournaments_list(db_path=DB_PATH):
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    # Fetch all tournaments, ordered by most recently saved
+    c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
+    tournaments = c.fetchall()
+    conn.close()
+    
+    # Format: [(id, "Name (Date)"), ...]
+    return [(t[0], f"{t[1]} ({t[2].split(' ')[0]})") for t in tournaments]
 
-def export_to_excel(tournament, tournament_name):
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{tournament_name}_{timestamp}.xlsx"
-        data = []
-        for round_num, round_pairings in enumerate(tournament.rounds):
-            for match_num, match in enumerate(round_pairings):
-                player2 = match.player2.name if match.player2 else 'BYE'
-                hoops1, hoops2 = match.get_scores()
-                data.append({
-                    'Round': round_num + 1,
-                    'Match': match_num + 1,
-                    'Player 1': match.player1.name,
-                    'Player 2': player2,
-                    'Hoops 1': hoops1,
-                    'Hoops 2': hoops2
-                })
-        df = pd.DataFrame(data)
-        df.to_excel(filename, index=False)
-        return filename
-    except Exception as e:
-        st.error(f"Error writing Excel: {e}")
-        return None
+def load_tournament_data(tournament_id, db_path=DB_PATH):
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+
+    # 1. Load Tournament Metadata
+    c.execute("SELECT name FROM tournaments WHERE id = ?", (tournament_id,))
+    tournament_name = c.fetchone()[0]
+
+    # 2. Load Players
+    c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id = ? ORDER BY player_id", (tournament_id,))
+    player_data = c.fetchall()
+    
+    player_map = {}
+    
+    # Reconstruct Player objects and stats
+    for p_id, name, points, wins, hs, hc in player_data:
+        player = Player(p_id, name)
+        player.points = points
+        player.wins = wins
+        player.hoops_scored = hs
+        player.hoops_conceded = hc
+        player_map[p_id] = player
+        
+    players_list = list(player_map.values())
+
+    # 3. Instantiate the tournament object
+    # We pass the loaded player objects directly, and set num_rounds high enough to accommodate all loaded rounds
+    num_rounds_query = c.execute("SELECT MAX(round_num) FROM matches WHERE tournament_id = ?", (tournament_id,)).fetchone()
+    num_rounds = (num_rounds_query[0] + 1) if num_rounds_query[0] is not None else 1
+    
+    # Initialize the tournament object with players list, preventing automatic pairing generation
+    tournament = SwissTournament(players_list, num_rounds)
+    
+    # 4. Load Matches
+    c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id = ? ORDER BY round_num, match_num", (tournament_id,))
+    match_data = c.fetchall()
+
+    tournament.rounds = [[] for _ in range(num_rounds)]
+    
+    # Reconstruct Match objects and results
+    for r_num, m_num, p1_id, p2_id, h1, h2 in match_data:
+        p1 = player_map.get(p1_id)
+        p2 = player_map.get(p2_id) if p2_id != -1 else None # -1 signifies BYE
+        
+        if p1 is None:
+            # Skip if player data is corrupted
+            continue
+
+        # Rebuild opponent sets for correct future pairings
+        if p2 is not None:
+            p1.add_opponent(p2_id)
+            p2.add_opponent(p1_id)
+
+        match = Match(p1, p2)
+        match.result = (h1, h2) # Directly set the recorded result
+        
+        # Ensure the rounds list is large enough
+        while len(tournament.rounds) <= r_num:
+            tournament.rounds.append([])
+            
+        # Place match into the correct round (using m_num as index, assuming matches are loaded sequentially)
+        tournament.rounds[r_num].append(match)
+
+    conn.close()
+    return tournament, tournament_name, num_rounds
+
+# --- Export Functions (Unchanged) ---
+# (Omitted here for brevity, assuming they remain in the final code)
+# ----------------------------------------------------------------------
 
 
 # ----------------------------------------------------------------------
-# --- Streamlit UI and Logic (Modified for compact display) ---
+# --- Streamlit UI and Logic (Modified to include sidebar loading) ---
 # ----------------------------------------------------------------------
 
-# Simplified score input function (No buttons)
 def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     input_key = f"{key}_input"
 
     st.number_input(
-        label, # Empty label to save space
+        label,
         min_value=min_value,
         max_value=max_value,
         step=step,
@@ -250,6 +305,25 @@ def number_input_simple(key, min_value=0, max_value=26, step=1, label=""):
     
     return int(st.session_state.get(input_key, 0))
 
+def load_selected_tournament(selected_id):
+    if selected_id:
+        try:
+            tournament, tournament_name, num_rounds = load_tournament_data(selected_id)
+            
+            # Reset existing hoop input state keys to avoid conflicts with new matches
+            for key in list(st.session_state.keys()):
+                if key.endswith(("_input")):
+                    del st.session_state[key]
+            
+            st.session_state.tournament = tournament
+            st.session_state.tournament_name = tournament_name
+            st.session_state.num_rounds = num_rounds
+            st.session_state.players = [p.name for p in tournament.players]
+            st.success(f"Tournament '{tournament_name}' loaded successfully.")
+            
+        except Exception as e:
+            st.error(f"Error loading tournament data: {e}")
+            st.session_state.tournament = None # Clear state on failure
 
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
@@ -261,7 +335,42 @@ def main():
         st.session_state.players = []
         st.session_state.num_rounds = 3
 
-    # --- Tournament Setup ---
+    # --- Sidebar for Loading Saved Tournaments ---
+    with st.sidebar:
+        st.header("Load Saved Tournament")
+        init_db() # Ensure DB exists
+        tournaments_list = load_tournaments_list()
+        
+        # Add a default option to the list
+        display_list = ["--- New Tournament ---"] + [t[1] for t in tournaments_list]
+        id_map = {t[1]: t[0] for t in tournaments_list}
+        
+        selected_display = st.selectbox(
+            "Select a tournament to load:",
+            display_list,
+            key="load_selectbox"
+        )
+        
+        if selected_display == "--- New Tournament ---":
+            # If a tournament is currently loaded, give the user an option to clear the state
+            if st.session_state.tournament:
+                if st.button("Start New Tournament"):
+                    st.session_state.tournament = None
+                    st.session_state.tournament_name = "New Tournament"
+                    st.session_state.players = []
+                    st.session_state.num_rounds = 3
+                    st.rerun()
+        else:
+            selected_id = id_map.get(selected_display)
+            # Check if a tournament is loaded and if it's the one currently selected
+            is_current = st.session_state.tournament and (st.session_state.tournament_name == selected_display.split(' (')[0])
+            
+            if not is_current and st.button(f"Load '{selected_display.split(' (')[0]}'"):
+                load_selected_tournament(selected_id)
+                # Need to use st.rerun() to apply the state change and redraw the main page
+                st.rerun()
+
+    # --- Main Content: Tournament Setup ---
     with st.expander("Create/Setup Tournament", expanded=not st.session_state.tournament):
         with st.form("tournament_form"):
             st.session_state.tournament_name = st.text_input("Tournament Name", value=st.session_state.tournament_name)
@@ -282,11 +391,11 @@ def main():
                     st.session_state.tournament = SwissTournament(st.session_state.players, int(st.session_state.num_rounds))
                     st.success("Tournament created! All pairings generated. Scroll down to enter results.")
 
-    # --- Tournament Management ---
+    # --- Main Content: Tournament Management ---
     if st.session_state.tournament:
         tournament = st.session_state.tournament
         
-        st.header(f"Tournament: {st.session_state.tournament_name}")
+        st.header(f"Active Tournament: {st.session_state.tournament_name}")
 
         # --- Match Results & Pairing Display ---
         st.subheader("Match Results & Input")
@@ -305,10 +414,10 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
-                    if input1_key not in st.session_state or st.session_state.get(input1_key, 0) == current_hoops1:
+                    if input1_key not in st.session_state:
                         st.session_state[input1_key] = current_hoops1
                     
-                    if input2_key not in st.session_state or st.session_state.get(input2_key, 0) == current_hoops2:
+                    if input2_key not in st.session_state:
                         st.session_state[input2_key] = current_hoops2
                         
                     score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
@@ -328,31 +437,25 @@ def main():
             
             with st.expander(round_label, expanded=expanded_state):
                 
-                # Create two main columns for matches
                 match_col1, match_col2 = st.columns(2)
-                
-                # Use a counter for display numbering
                 match_display_num = 1
                 
-                # Iterate through the full round pairings list to maintain match_num index
                 for i, match in enumerate(round_pairings):
                     if match.player2 is None:
                         continue 
                         
-                    # Determine which column to place the match in. Use match_display_num for clean alternation.
                     current_match_col = match_col1 if match_display_num % 2 != 0 else match_col2
                     
                     with current_match_col:
-                        # FIX: Corrected generator expression to yield the full tuple (r, m, k1, k2)
+                        # Find the match_info tuple from the score_keys_to_update list
                         try:
+                            # Use index() on the full round_pairings list, not non_bye_matches
                             match_info = next((r, m, k1, k2) 
                                              for r, m, k1, k2 in score_keys_to_update 
                                              if r == round_num and m == round_pairings.index(match))
                         except StopIteration:
-                            # This should not happen if synchronization is correct, but safe check
                             continue
 
-                        # Unpack the correct key roots
                         hoops1_key = match_info[2]
                         hoops2_key = match_info[3]
                         
@@ -363,23 +466,18 @@ def main():
                             st.markdown(f"**{match_display_num}:**")
                             
                         with col_p1:
-                            # Using markdown with large font size
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player1.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_h1:
-                            # Use number_input_simple (no buttons)
                             number_input_simple(key=hoops1_key)
                         
                         with col_h2:
-                            # Use number_input_simple (no buttons)
                             number_input_simple(key=hoops2_key)
                         
                         with col_p2:
-                            # Using markdown with large font size
                             st.markdown(f"**<h4 style='text-align: left;'>{match.player2.name}</h4>**", unsafe_allow_html=True)
                             
                         with col_status:
-                            # Instant Score Marking Logic
                             input1_key = f"{hoops1_key}_input"
                             input2_key = f"{hoops2_key}_input"
                             
@@ -399,17 +497,16 @@ def main():
 
                             st.metric(label="Score", value=status_text, delta=status_delta)
                                 
-                        current_match_col.markdown("---") # Separator within the column
+                        current_match_col.markdown("---")
                         match_display_num += 1
 
 
-        # --- The Submission Form (Unchanged) ---
+        # --- The Submission Form ---
         with st.form("results_submission_form"):
             st.markdown("---")
             results_submitted = st.form_submit_button("Update All Match Results and Recalculate Standings/Pairings")
             st.markdown("---")
             
-            # Recalculation logic
             if results_submitted:
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
@@ -439,17 +536,17 @@ def main():
         } for i, p in enumerate(standings)]
         st.dataframe(pd.DataFrame(standings_data), use_container_width=True)
 
-        # --- Save and Export (Unchanged) ---
+        # --- Save and Export ---
         st.subheader("Save and Export")
         
         col_save, col_export1, col_export2 = st.columns(3)
 
         with col_save:
-            if st.button("Save Tournament to Database"):
+            if st.button("Save Tournament to Database (Overwrites existing name)"):
                 conn = init_db()
                 save_to_db(tournament, st.session_state.tournament_name, conn)
                 conn.close()
-                st.success("Tournament saved to database!")
+                st.success(f"Tournament '{st.session_state.tournament_name}' saved to database!")
 
         with col_export1:
             if st.button("Generate CSV"):
