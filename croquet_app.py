@@ -140,7 +140,7 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-# --- Database Functions (Unchanged) ---
+# --- Database & Export Functions (Unchanged) ---
 
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
@@ -186,8 +186,6 @@ def save_to_db(tournament, tournament_name, conn):
     except sqlite3.Error as e:
         st.error(f"Database error on save: {e}")
         conn.rollback() 
-
-# --- Export Functions (Unchanged) ---
 
 def export_to_csv(tournament, tournament_name):
     try:
@@ -322,7 +320,7 @@ def main():
         
         score_keys_to_update = [] 
         
-        # FIX: PRE-SYNCHRONIZE SESSION STATE with overwrite prevention
+        # 1. Synchronization and Key Generation Block (Decoupled from Display)
         for round_num in range(tournament.num_rounds):
             pairings = tournament.get_round_pairings(round_num)
             for match_num, match in enumerate(pairings):
@@ -334,47 +332,57 @@ def main():
                     
                     current_hoops1, current_hoops2 = match.get_scores()
                     
+                    # Prevent scores from reverting to zero after manual entry
                     if input1_key not in st.session_state or st.session_state.get(input1_key, 0) == current_hoops1:
                         st.session_state[input1_key] = current_hoops1
                     
                     if input2_key not in st.session_state or st.session_state.get(input2_key, 0) == current_hoops2:
                         st.session_state[input2_key] = current_hoops2
-        # END FIX BLOCK
+                        
+                    score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
 
-        # 🟢 START NEW ROUND STRUCTURE (using st.expander)
+        # 2. Display Block with Consolidated BYE Information
         for round_num in range(tournament.num_rounds):
-            round_label = f"Round {round_num + 1} Pairings"
-            # Automatically expand the first round for immediate visibility
+            round_pairings = tournament.get_round_pairings(round_num)
+            
+            # Identify BYE players for display in the expander title
+            bye_players = [match.player1.name for match in round_pairings if match.player2 is None]
+            
+            label_suffix = f" ({len(round_pairings) - len(bye_players)} matches"
+            if bye_players:
+                 label_suffix += f", BYE: {', '.join(bye_players)})"
+            else:
+                 label_suffix += ")"
+                 
+            round_label = f"Round {round_num + 1} Pairings" + label_suffix
             expanded_state = (round_num == 0)
             
             with st.expander(round_label, expanded=expanded_state):
-                pairings = tournament.get_round_pairings(round_num)
                 
-                # Check if there are any non-BYE matches to display for this round
-                non_bye_matches = [m for m in pairings if m.player2 is not None]
+                # Consolidated BYE Player list (most compact way)
+                if bye_players:
+                    st.markdown(f"**BYE:** {', '.join(bye_players)} (0 points awarded)")
+                    st.markdown("---") 
+
+                non_bye_matches = [m for m in round_pairings if m.player2 is not None]
+                match_display_num = 1
                 
-                if not non_bye_matches and pairings:
-                    st.info(f"Only one player in this round: **{pairings[0].player1.name}** has a **BYE**")
-                    continue
-                
-                for match_num, match in enumerate(pairings):
+                # Loop through only competitive matches for detailed input display
+                for match_num, match in enumerate(round_pairings):
+                    if match.player2 is None:
+                        # Skip detailed input display for BYE matches entirely
+                        continue 
+                        
                     st.markdown("---") # Separator for individual matches
                     
-                    if match.player2 is None:
-                        # Compact BYE message
-                        st.info(f"**Match {match_num + 1}:** **{match.player1.name}** has a **BYE**")
-                        continue 
-                    
-                    # Layout for the match inputs and status
-                    col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
-                    
+                    # Use the original key roots generated in the synchronization block
                     hoops1_key = f"hoops1_r{round_num}_m{match_num}"
                     hoops2_key = f"hoops2_r{round_num}_m{match_num}"
                     
-                    score_keys_to_update.append((round_num, match_num, hoops1_key, hoops2_key))
-
+                    col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
+                    
                     with col1:
-                        st.markdown(f"**Match {match_num + 1}:**")
+                        st.markdown(f"**Match {match_display_num}:**")
                         st.markdown(f"**{match.player1.name}** vs **{match.player2.name}**")
                         st.caption("*(Hoop scores must differ for a win point)*")
                     
@@ -421,7 +429,9 @@ def main():
                             st.metric(label="Current Score", value=f"{match.result[0]} - {match.result[1]}", delta=status)
                         else:
                             st.metric(label="Current Score", value="Not Recorded")
-        # 🟢 END NEW ROUND STRUCTURE
+                            
+                    match_display_num += 1
+
 
         # --- The Submission Form (Unchanged) ---
         with st.form("results_submission_form"):
