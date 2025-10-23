@@ -40,7 +40,6 @@ class Match:
         self.player2.hoops_scored += hoops2
         self.player2.hoops_conceded += hoops1
 
-        # Award points only if scores are different (No Draws)
         if hoops1 > hoops2:
             self.player1.wins += 1
             self.player1.points += 1
@@ -60,14 +59,17 @@ class SwissTournament:
         self.players = [Player(i, name) for i, name in enumerate(players)]
         self.num_rounds = num_rounds
         self.rounds = []
+        # Only generate the first round initially
         self.generate_round_pairings(0, initial=True)
+        # Initialize empty lists for future rounds
         for round_num in range(1, self.num_rounds):
-            self.generate_round_pairings(round_num)
+            self.rounds.append([])
 
     def generate_round_pairings(self, round_num, initial=False):
         while len(self.rounds) <= round_num:
             self.rounds.append([])
         
+        # Reset the pairings list for the specific round being generated
         self.rounds[round_num] = [] 
         round_pairings = []
         
@@ -87,7 +89,8 @@ class SwissTournament:
             best_p2 = None
             for j in range(i + 1, len(available_players)):
                 p2 = available_players[j]
-                if p2.id not in used_players and p2.id not in p1.opponents:
+                # Check opponent history only for non-initial rounds
+                if p2.id not in used_players and (initial or p2.id not in p1.opponents):
                     best_p2 = p2
                     break
             
@@ -100,6 +103,7 @@ class SwissTournament:
             
         remaining_players = [p for p in available_players if p.id not in used_players]
         if remaining_players:
+            # Highest ranked remaining player gets the bye
             bye_player = remaining_players[0]
             round_pairings.append(Match(bye_player, None))
         
@@ -132,9 +136,8 @@ class SwissTournament:
             
             match.set_result(hoops1, hoops2)
             
-            # Re-pair the next round
-            if round_num + 1 < self.num_rounds:
-                 self.generate_round_pairings(round_num + 1)
+            # --- FIX: Removed logic to re-pair the next round here ---
+            # Re-pairing is now handled *after* all results are processed in main()
 
     def get_standings(self):
         return sorted(self.players, key=lambda p: (p.points, p.hoops_scored - p.hoops_conceded, p.hoops_scored), reverse=True)
@@ -144,7 +147,7 @@ class SwissTournament:
             return self.rounds[round_num]
         return []
 
-# --- Database Functions ---
+# --- Database Functions (Unchanged) ---
 
 def init_db(db_path='tournament.db'):
     conn = sqlite3.connect(db_path)
@@ -153,7 +156,6 @@ def init_db(db_path='tournament.db'):
     c.execute('''CREATE TABLE IF NOT EXISTS tournaments
                  (id INTEGER PRIMARY KEY, name TEXT, date TEXT)''')
                  
-    # Players table: CORRECTED schema with 'wins INTEGER'
     c.execute('''CREATE TABLE IF NOT EXISTS players
                  (tournament_id INTEGER, player_id INTEGER, name TEXT, 
                   points INTEGER, wins INTEGER, 
@@ -234,7 +236,7 @@ def export_to_excel(tournament, tournament_name):
         return None
 
 
-# --- Callback Functions ---
+# --- Callback Functions (Unchanged) ---
 
 def decrement_score(key, step, min_value):
     temp_key = f"{key}_temp"
@@ -249,11 +251,11 @@ def increment_score(key, step, max_value):
 
 # --- Streamlit UI and Logic ---
 
-# Custom number input with + and - buttons
+# Custom number input with + and - buttons (Unchanged)
 def number_input_with_buttons(label, key, value=0, min_value=0, max_value=26, step=1):
     temp_key = f"{key}_temp"
 
-    # Synchronization FIX: Initialize/reset the input's session state based on the match object's current score
+    # Synchronization FIX: Re-initialize the input's session state based on the match object's current score
     if temp_key not in st.session_state or st.session_state[temp_key] != int(value):
         st.session_state[temp_key] = int(value)
 
@@ -334,13 +336,16 @@ def main():
             st.markdown(f"#### Round {round_num + 1} Pairings")
             pairings = tournament.get_round_pairings(round_num)
             
+            # If pairings is empty (meaning it's an unplayed future round), skip display
+            if not pairings and round_num > 0:
+                 st.info(f"Pairings for Round {round_num + 1} will be generated after all results for Round {round_num} are submitted.")
+                 continue
+
             for match_num, match in enumerate(pairings):
                 st.markdown("---")
                 
-                # Handling BYE
                 if match.player2 is None:
                     st.info(f"**Match {match_num + 1}:** {match.player1.name} gets a **BYE** (0 points awarded)")
-                    # NOTE: Do not display number inputs for BYE matches
                     continue 
                 
                 col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
@@ -390,6 +395,8 @@ def main():
             st.markdown("---")
             
             if results_submitted:
+                max_recorded_round = -1
+                
                 for round_num, match_num, hoops1_key_root, hoops2_key_root in score_keys_to_update:
                     match = tournament.get_round_pairings(round_num)[match_num]
                     
@@ -399,12 +406,22 @@ def main():
                     hoops1 = st.session_state.get(hoops1_key, 0)
                     hoops2 = st.session_state.get(hoops2_key, 0)
                     
-                    if hoops1 == hoops2 and match.player2 is not None:
-                        st.warning(f"Round {round_num+1} Match {match_num+1}: Scores for {match.player1.name} and {match.player2.name} are equal ({hoops1}-{hoops2}). No points or wins were awarded for this match.")
-                        
+                    # Record the result
                     tournament.record_result(round_num, match_num, hoops1, hoops2)
                     
-                st.success("All results updated! Standings and subsequent round pairings recalculated.")
+                    # Track the highest round with a recorded result (excluding 0,0)
+                    if hoops1 != 0 or hoops2 != 0:
+                        max_recorded_round = max(max_recorded_round, round_num)
+
+                # --- NEW LOGIC: GENERATE NEXT ROUND PAIRINGS ONLY AFTER A ROUND IS COMPLETE ---
+                next_round_num = max_recorded_round + 1
+                if next_round_num < tournament.num_rounds and next_round_num > 0:
+                    # Check if the next round is currently empty (meaning it needs pairing)
+                    if not tournament.get_round_pairings(next_round_num):
+                        tournament.generate_round_pairings(next_round_num)
+                        st.success(f"Pairings for Round {next_round_num + 1} generated based on current standings.")
+
+                st.success("All visible match results updated! Standings recalculated.")
 
         # --- Standings ---
         st.subheader("Current Standings 🏆")
