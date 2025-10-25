@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 def get_connection():
     """Return a psycopg2 connection from DATABASE_URL with SSL."""
-    url = os.getenv("DATABASE_URL")
+    url = os.getenv("postgresql://postgres:algarve_croquet_club@db.ymmgluznbdettfyoayel.supabase.co:5432/postgres")
     if not url:
         raise RuntimeError("DATABASE_URL not set in environment")
     return psycopg2.connect(url, sslmode="require")
