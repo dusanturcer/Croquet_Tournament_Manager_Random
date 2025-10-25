@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 # DB connection (Render supplies DATABASE_URL)
 # --------------------------------------------------------------------------- #
-DB_PATH = os.getenv("DATABASE_URL", "postgresql://postgres:algarve_croquet_club@db.ymmgluznbdettfyoayel.supabase.co:5432/postgres")
+DB_PATH = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/dbname")
 
 # --------------------------------------------------------------------------- #
 # Model classes – **NO Streamlit calls here**

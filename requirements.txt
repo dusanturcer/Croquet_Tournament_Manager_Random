@@ -1,3 +1,4 @@
 streamlit==1.49.0
 pandas
 openpyxl
+PyGithub==2.4.0
