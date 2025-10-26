@@ -174,28 +174,43 @@ class SwissTournament:
 
             if is_even:
                 bottom = bottom[1:] + bottom[:1]
-                pairs = list(zip(top, bottom))
+                pairs = [(top[i], bottom[i]) for i in range(n//2)]
             else:
                 all_players = all_players[1:] + all_players[:1]
-                pairs = [(all_players[i], all_players[i + n//2]) for i in range(n//2)]
-
-            for p1, p2 in pairs:
-                while p2.id in self.opponents[p1.id]:
-                    idx = pairs.index((p1, p2))
-                    if idx + 1 < len(pairs):
-                        pairs[idx], pairs[idx + 1] = pairs[idx + 1], pairs[idx]
-                        p2 = pairs[idx][1]
+                pairs = []
+                for i in range(n//2):
+                    p1 = all_players[i]
+                    p2 = all_players[i + n//2]
+                    if p1.id != p2.id and p2.id not in self.opponents[p1.id]:
+                        pairs.append((p1, p2))
                     else:
-                        break
+                        # Fallback: find any valid opponent
+                        for cand in all_players:
+                            if cand.id != p1.id and cand.id not in used and cand.id not in self.opponents[p1.id]:
+                                pairs.append((p1, cand))
+                                break
+
+            # Process pairs
+            for p1, p2 in pairs:
+                if p1.id == p2.id or p2.id in self.opponents[p1.id]:
+                    # Emergency swap
+                    available = [p for p in self.players if p.id not in used and p.id not in self.opponents[p1.id]]
+                    if available:
+                        p2 = available[0]
+                    else:
+                        continue  # skip broken match
 
                 round_matches.append(Match(p1, p2))
                 self.opponents[p1.id].add(p2.id)
                 self.opponents[p2.id].add(p1.id)
                 used.update([p1.id, p2.id])
 
+            # Add bye if odd
             if not is_even:
-                bye_player = next(p for p in self.players if p.id not in used)
-                round_matches.append(Match(bye_player, None))
+                bye_candidates = [p for p in self.players if p.id not in used]
+                if bye_candidates:
+                    bye_player = bye_candidates[0]
+                    round_matches.append(Match(bye_player, None))
 
             self.rounds.append(round_matches)
 
@@ -227,7 +242,6 @@ class SwissTournament:
 
     def get_round_pairings(self, round_num):
         return self.rounds[round_num] if 0 <= round_num < len(self.rounds) else []
-
 
 # --------------------------------------------------------------------------- #
 # DB helpers
@@ -511,7 +525,7 @@ def main():
             if st.form_submit_button("Create", disabled=locked):
                 new_players = [p.strip() for p in players_txt.splitlines() if p.strip()]
                 if len(new_players) < 2:
-                    st.error("Need ≥2 players")
+                    st.error("Need >= 2 players")
                 else:
                     for k in list(st.session_state.keys()):
                         if k.startswith(("hoops1_", "hoops2_")):
