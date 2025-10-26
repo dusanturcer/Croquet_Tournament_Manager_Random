@@ -386,7 +386,7 @@ def number_input_simple(key, min_value=0, max_value=26, label="", disabled=False
     if val not in st.session_state: st.session_state[val] = 0
     if txt not in st.session_state:
         cur = st.session_state[val]
-        -st.session_state[txt] = "" if cur == 0 else str(cur)
+        st.session_state[txt] = "" if cur == 0 else str(cur)  # Fixed: no "-"
     st.text_input(label, value=st.session_state[txt], max_chars=2, key=txt, disabled=disabled, help="0-26",
                   on_change=_sync_text_to_int, args=(txt, val, min_value, max_value))
     return int(st.session_state[val])
@@ -442,7 +442,7 @@ def main():
         if k not in st.session_state:
             st.session_state[k] = v
 
-    locked = st.session_state.is_locked == " "Locked"
+    locked = st.session_state.is_locked == "Locked"
     if st.session_state._lock_changed:
         st.session_state._lock_changed = False
         st.toast("Tournament Input is **Locked**" if locked else "Tournament Input is **Unlocked**")
