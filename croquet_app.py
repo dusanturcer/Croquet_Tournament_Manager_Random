@@ -6,7 +6,6 @@ import csv
 import os
 from datetime import datetime
 from collections import Counter
-import json
 import uuid
 import logging
 
@@ -17,23 +16,18 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
-# DB connection – only uses DATABASE_URL
+# DB connection – uses DATABASE_URL (Supavisor recommended)
 # --------------------------------------------------------------------------- #
 def get_connection():
-    """Return a psycopg2 connection from DATABASE_URL with SSL."""
-    url = os.getenv("DATABASE_URL")  # Correct: reads the variable named "DATABASE_URL"
+    url = os.getenv("DATABASE_URL")
     if not url:
+        st.error("DATABASE_URL not set! Add it in **Secrets** (Streamlit) or **Environment** (Render).")
         raise RuntimeError("DATABASE_URL not set in environment")
     return psycopg2.connect(url, sslmode="require")
 
-# --------------------------------------------------------------------------- #
-# Auto-create schema (safe to run every time)
-# --------------------------------------------------------------------------- #
 def init_schema(conn):
-    """Create tables if they don't exist."""
     cur = conn.cursor()
     try:
-        # tournaments
         cur.execute("""
             CREATE TABLE IF NOT EXISTS tournaments (
                 id   SERIAL PRIMARY KEY,
@@ -41,8 +35,6 @@ def init_schema(conn):
                 date TEXT NOT NULL
             );
         """)
-
-        # players
         cur.execute("""
             CREATE TABLE IF NOT EXISTS players (
                 tournament_id   INTEGER NOT NULL,
@@ -56,8 +48,6 @@ def init_schema(conn):
                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
             );
         """)
-
-        # matches
         cur.execute("""
             CREATE TABLE IF NOT EXISTS matches (
                 tournament_id INTEGER NOT NULL,
@@ -71,7 +61,6 @@ def init_schema(conn):
                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
             );
         """)
-
         conn.commit()
         logger.info("DB schema ensured")
     except Exception as e:
@@ -82,7 +71,7 @@ def init_schema(conn):
         cur.close()
 
 # --------------------------------------------------------------------------- #
-# Model classes – NO Streamlit calls
+# Model classes
 # --------------------------------------------------------------------------- #
 class Player:
     def __init__(self, id, name):
@@ -96,7 +85,6 @@ class Player:
 
     def add_opponent(self, opponent_id):
         self.opponents.add(opponent_id)
-
 
 class Match:
     def __init__(self, player1, player2):
@@ -127,53 +115,92 @@ class Match:
     def get_scores(self):
         return self.result if self.result else (0, 0)
 
-
+# --------------------------------------------------------------------------- #
+# UNIVERSAL SWISS TOURNAMENT – works for 6, 8, 9, 10+ players
+# --------------------------------------------------------------------------- #
 class SwissTournament:
     def __init__(self, players_names_or_objects, num_rounds):
         if all(isinstance(p, str) for p in players_names_or_objects):
             self.players = [Player(i, name) for i, name in enumerate(players_names_or_objects)]
-            self.rounds  = []
-            for r in range(num_rounds):
-                self.generate_round_pairings(r, initial=(r == 0))
         else:
             self.players = players_names_or_objects
-            self.rounds  = []
 
+        self.n = len(self.players)
         self.num_rounds = num_rounds
+        self.rounds = []
+        self.opponents = {p.id: set() for p in self.players}
+        self._generate_all_rounds()
 
-    def generate_round_pairings(self, round_num, initial=False):
-        while len(self.rounds) <= round_num:
-            self.rounds.append([])
+    def _generate_all_rounds(self):
+        n = self.n
+        is_even = n % 2 == 0
 
-        self.rounds[round_num] = []
-        round_pairings = []
-
-        if initial:
-            available = self.players.copy()
-            random.shuffle(available)
-        else:
-            available = self.get_standings()
-
+        # Round 1: Deterministic pairing
+        first_round = []
         used = set()
-        for i, p1 in enumerate(available):
-            if p1.id in used:
-                continue
-            p2 = next((p for p in available[i+1:] if p.id not in used and p.id not in p1.opponents), None)
-            if p2:
-                round_pairings.append(Match(p1, p2))
-                used.add(p1.id)
-                used.add(p2.id)
-                p1.add_opponent(p2.id)
-                p2.add_opponent(p1.id)
 
-        remaining = [p for p in available if p.id not in used]
-        if remaining:
-            round_pairings.append(Match(remaining[0], None))
+        if is_even:
+            for i in range(n // 2):
+                p1 = self.players[i]
+                p2 = self.players[n - 1 - i]
+                first_round.append(Match(p1, p2))
+                self.opponents[p1.id].add(p2.id)
+                self.opponents[p2.id].add(p1.id)
+                used.update([p1.id, p2.id])
+        else:
+            for i in range(n // 2):
+                p1 = self.players[i]
+                p2 = self.players[n - 1 - i]
+                first_round.append(Match(p1, p2))
+                self.opponents[p1.id].add(p2.id)
+                self.opponents[p2.id].add(p1.id)
+                used.update([p1.id, p2.id])
+            bye_player = next(p for p in self.players if p.id not in used)
+            first_round.append(Match(bye_player, None))
 
-        self.rounds[round_num] = round_pairings
+        self.rounds.append(first_round)
 
-        if len(used) + len(remaining) != len(self.players):
-            logger.warning(f"Round {round_num+1}: only {len(used)+len(remaining)}/{len(self.players)} paired")
+        # Subsequent rounds
+        if is_even:
+            top = self.players[:n//2]
+            bottom = self.players[n//2:]
+        else:
+            top = self.players[:-1]
+            bye_pool = [self.players[-1]]
+
+        for rnd in range(1, self.num_rounds):
+            if is_even:
+                bottom = bottom[1:] + bottom[:1]
+            else:
+                top = top[1:] + top[:1]
+
+            round_matches = []
+            used = set()
+
+            for i in range(len(top)):
+                p1 = top[i]
+                if is_even:
+                    p2 = bottom[i]
+                else:
+                    p2 = bye_pool[0]
+                    bye_pool = [top[i]]
+
+                if p2.id in self.opponents[p1.id]:
+                    candidates = [p for p in self.players if p.id not in used and p.id not in self.opponents[p1.id]]
+                    if candidates:
+                        p2 = random.choice(candidates)
+
+                if p2:
+                    round_matches.append(Match(p1, p2))
+                    self.opponents[p1.id].add(p2.id)
+                    self.opponents[p2.id].add(p1.id)
+                    used.update([p1.id, p2.id])
+
+            if not is_even:
+                bye_player = next(p for p in self.players if p.id not in used)
+                round_matches.append(Match(bye_player, None))
+
+            self.rounds.append(round_matches)
 
     def record_result(self, round_num, match_num, hoops1, hoops2):
         if not (0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num])):
@@ -203,9 +230,8 @@ class SwissTournament:
     def get_round_pairings(self, round_num):
         return self.rounds[round_num] if 0 <= round_num < len(self.rounds) else []
 
-
 # --------------------------------------------------------------------------- #
-# DB helpers (use get_connection())
+# DB helpers
 # --------------------------------------------------------------------------- #
 def get_db_mtime():
     return datetime.now().timestamp()
@@ -242,7 +268,6 @@ def save_to_db(tournament, tournament_name):
             "INSERT INTO matches (tournament_id,round_num,match_num,player1_id,player2_id,hoops1,hoops2) VALUES (%s,%s,%s,%s,%s,%s,%s)",
             match_rows
         )
-
         conn.commit()
         st.cache_data.clear()
         logger.info(f"Saved tournament {tid}")
@@ -254,7 +279,6 @@ def save_to_db(tournament, tournament_name):
         return None
     finally:
         conn.close()
-
 
 def delete_tournament_from_db(tournament_id):
     conn = get_connection()
@@ -273,7 +297,6 @@ def delete_tournament_from_db(tournament_id):
     finally:
         conn.close()
 
-
 @st.cache_data(show_spinner="Loading tournament list…")
 def load_tournaments_list(_db_mtime, _cache_buster=str(uuid.uuid4())):
     try:
@@ -282,10 +305,7 @@ def load_tournaments_list(_db_mtime, _cache_buster=str(uuid.uuid4())):
         c.execute("SELECT id, name, date FROM tournaments ORDER BY date DESC")
         rows = c.fetchall()
         conn.close()
-
-        if not rows:
-            return []
-
+        if not rows: return []
         name_cnt = Counter(r[1] for r in rows)
         out = []
         for tid, name, date in rows:
@@ -297,21 +317,16 @@ def load_tournaments_list(_db_mtime, _cache_buster=str(uuid.uuid4())):
         st.error(f"Load list error: {e}")
         return []
 
-
 def load_tournament_data(tournament_id):
     conn = get_connection()
     try:
         c = conn.cursor()
         c.execute("SELECT name FROM tournaments WHERE id=%s", (tournament_id,))
         tname = c.fetchone()
-        if not tname:
-            return None, None, None
+        if not tname: return None, None, None
         tname = tname[0]
 
-        c.execute(
-            "SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id=%s ORDER BY player_id",
-            (tournament_id,)
-        )
+        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
         for pid, name, pts, wins, hs, hc in player_rows:
@@ -326,10 +341,7 @@ def load_tournament_data(tournament_id):
         tournament = SwissTournament(list(player_map.values()), num_rounds)
         tournament.rounds = [[] for _ in range(num_rounds)]
 
-        c.execute(
-            "SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id=%s ORDER BY round_num, match_num",
-            (tournament_id,)
-        )
+        c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id=%s ORDER BY round_num, match_num", (tournament_id,))
         for r, m, p1id, p2id, h1, h2 in c.fetchall():
             p1 = player_map.get(p1id)
             p2 = player_map.get(p2id) if p2id != -1 else None
@@ -353,7 +365,6 @@ def load_tournament_data(tournament_id):
     finally:
         conn.close()
 
-
 # --------------------------------------------------------------------------- #
 # Simple number input
 # --------------------------------------------------------------------------- #
@@ -375,14 +386,10 @@ def number_input_simple(key, min_value=0, max_value=26, label="", disabled=False
     if val not in st.session_state: st.session_state[val] = 0
     if txt not in st.session_state:
         cur = st.session_state[val]
-        st.session_state[txt] = "" if cur == 0 else str(cur)
-    st.text_input(
-        label, value=st.session_state[txt], max_chars=2, key=txt,
-        disabled=disabled, help="0-26",
-        on_change=_sync_text_to_int, args=(txt, val, min_value, max_value)
-    )
+        -st.session_state[txt] = "" if cur == 0 else str(cur)
+    st.text_input(label, value=st.session_state[txt], max_chars=2, key=txt, disabled=disabled, help="0-26",
+                  on_change=_sync_text_to_int, args=(txt, val, min_value, max_value))
     return int(st.session_state[val])
-
 
 # --------------------------------------------------------------------------- #
 # UI helpers
@@ -408,7 +415,6 @@ def load_selected_tournament(tid):
 
 def handle_lock_change():
     st.session_state._lock_changed = True
-
 
 # --------------------------------------------------------------------------- #
 # Main UI
@@ -436,7 +442,7 @@ def main():
         if k not in st.session_state:
             st.session_state[k] = v
 
-    locked = st.session_state.is_locked == "Locked"
+    locked = st.session_state.is_locked == " "Locked"
     if st.session_state._lock_changed:
         st.session_state._lock_changed = False
         st.toast("Tournament Input is **Locked**" if locked else "Tournament Input is **Unlocked**")
@@ -462,7 +468,7 @@ def main():
         default_idx = 0
         if st.session_state.loaded_id:
             for i, (tid, disp) in enumerate(tour_list):
-                if tid == st.session_state.loaded_id:
+               imeline if tid == st.session_state.loaded_id:
                     default_idx = i + 1
                     break
         sel_disp = st.selectbox("Select tournament", options, index=default_idx)
@@ -498,7 +504,7 @@ def main():
                 "Players (one per line)", "\n".join(st.session_state.players), disabled=locked
             )
             st.session_state.num_rounds = st.number_input(
-                "Rounds", 1, 10, st.session_state.num_rounds, disabled=locked
+                "Rounds", 1, 15, st.session_state.num_rounds, disabled=locked
             )
             if st.form_submit_button("Create", disabled=locked):
                 new_players = [p.strip() for p in players_txt.splitlines() if p.strip()]
@@ -580,12 +586,6 @@ def main():
                     st.toast(f"Round {r+1} Match {m_idx+1}: draw – no points", icon="info")
                 match.result = None
                 match.set_result(h1, h2)
-
-            if all(all(sum(m.get_scores()) > 0 for m in rnd if m and m.player2) for rnd in tournament.rounds):
-                next_r = len(tournament.rounds)
-                if next_r < tournament.num_rounds:
-                    tournament.generate_round_pairings(next_r, initial=False)
-                    st.success(f"Round {next_r+1} pairings generated")
             st.success("Standings updated")
             st.rerun()
 
@@ -623,7 +623,6 @@ def main():
                     st.download_button("Download Excel", fp, f,
                                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 os.remove(f)
-
 
 # --------------------------------------------------------------------------- #
 # Export helpers
@@ -665,7 +664,6 @@ def export_to_excel(tournament, name):
         logger.error(f"Excel error: {e}")
         st.error(f"Excel error: {e}")
         return None
-
 
 if __name__ == "__main__":
     main()
