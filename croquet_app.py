@@ -468,7 +468,7 @@ def main():
         default_idx = 0
         if st.session_state.loaded_id:
             for i, (tid, disp) in enumerate(tour_list):
-               imeline if tid == st.session_state.loaded_id:
+                if tid == st.session_state.loaded_id:
                     default_idx = i + 1
                     break
         sel_disp = st.selectbox("Select tournament", options, index=default_idx)
