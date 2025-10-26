@@ -129,22 +129,23 @@ class SwissTournament:
         self.num_rounds = num_rounds
         self.rounds = []
         self.opponents = {p.id: set() for p in self.players}
-        self.bye_count = {p.id: 0 for p in self.players}  # Track bye fairness
+        self.bye_count = {p.id: 0 for p in self.players}
+        self.games_played = {p.id: 0 for p in self.players}
         self._generate_all_rounds()
 
     def _get_next_bye_player(self, used):
-        """Return player with fewest byes (tiebreak: lowest ID)"""
         candidates = [p for p in self.players if p.id not in used]
         if not candidates:
             return None
-        candidates.sort(key=lambda p: (self.bye_count[p.id], p.id))
+        # Fewest byes → fewest games → lowest ID
+        candidates.sort(key=lambda p: (self.bye_count[p.id], self.games_played[p.id], p.id))
         return candidates[0]
 
     def _generate_all_rounds(self):
         n = self.n
         is_even = n % 2 == 0
 
-        # --- Round 1: Deterministic pairing ---
+        # --- Round 1: Seed top vs bottom ---
         first_round = []
         used = set()
 
@@ -155,6 +156,8 @@ class SwissTournament:
                 first_round.append(Match(p1, p2))
                 self.opponents[p1.id].add(p2.id)
                 self.opponents[p2.id].add(p1.id)
+                self.games_played[p1.id] += 1
+                self.games_played[p2.id] += 1
                 used.update([p1.id, p2.id])
         else:
             for i in range(n // 2):
@@ -163,6 +166,8 @@ class SwissTournament:
                 first_round.append(Match(p1, p2))
                 self.opponents[p1.id].add(p2.id)
                 self.opponents[p2.id].add(p1.id)
+                self.games_played[p1.id] += 1
+                self.games_played[p2.id] += 1
                 used.update([p1.id, p2.id])
             bye_player = self._get_next_bye_player(used)
             if bye_player:
@@ -172,54 +177,51 @@ class SwissTournament:
 
         self.rounds.append(first_round)
 
-        # --- Rounds 2+ ---
-        if is_even:
-            top = self.players[:n//2]
-            bottom = self.players[n//2:]
-        else:
-            all_players = self.players.copy()
+        # --- Subsequent rounds: Smart pairing ---
+        player_list = self.players.copy()
 
         for rnd in range(1, self.num_rounds):
             round_matches = []
             used = set()
 
-            if is_even:
-                bottom = bottom[1:] + bottom[:1]
-                pairs = [(top[i], bottom[i]) for i in range(n//2)]
-            else:
-                all_players = all_players[1:] + all_players[:1]
-                pairs = []
-                for i in range(n//2):
-                    p1 = all_players[i]
-                    p2 = all_players[i + n//2]
-                    if p1.id != p2.id and p2.id not in self.opponents[p1.id]:
+            # Rotate list
+            player_list = player_list[1:] + player_list[:1]
+
+            # Try to pair top half vs bottom half
+            half = n // 2
+            top = player_list[:half]
+            bottom = player_list[half:]
+
+            pairs = []
+            for p1 in top:
+                for p2 in bottom:
+                    if (p1.id not in used and
+                        p2.id not in used and
+                        p2.id not in self.opponents[p1.id]):
                         pairs.append((p1, p2))
-                    else:
-                        # Fallback: find any valid opponent
-                        for cand in all_players:
-                            if cand.id != p1.id and cand.id not in used and cand.id not in self.opponents[p1.id]:
-                                pairs.append((p1, cand))
-                                break
-                        else:
-                            # Last resort: any unused
-                            for cand in all_players:
-                                if cand.id != p1.id and cand.id not in used:
-                                    pairs.append((p1, cand))
-                                    break
+                        used.update([p1.id, p2.id])
+                        break
 
-            # Process pairs
+            # Fill remaining with best effort
+            remaining = [p for p in self.players if p.id not in used]
+            i = 0
+            while i + 1 < len(remaining):
+                p1 = remaining[i]
+                p2 = remaining[i + 1]
+                if p2.id not in self.opponents[p1.id]:
+                    pairs.append((p1, p2))
+                    used.update([p1.id, p2.id])
+                    i += 2
+                else:
+                    i += 1
+
+            # Create matches
             for p1, p2 in pairs:
-                if p1.id == p2.id or p2.id in self.opponents[p1.id]:
-                    available = [p for p in self.players if p.id not in used and p.id not in self.opponents[p1.id]]
-                    if available:
-                        p2 = available[0]
-                    else:
-                        continue
-
                 round_matches.append(Match(p1, p2))
                 self.opponents[p1.id].add(p2.id)
                 self.opponents[p2.id].add(p1.id)
-                used.update([p1.id, p2.id])
+                self.games_played[p1.id] += 1
+                self.games_played[p2.id] += 1
 
             # Add bye if odd
             if not is_even:
