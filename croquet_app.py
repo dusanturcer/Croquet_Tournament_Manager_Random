@@ -235,8 +235,8 @@ class SwissTournament:
             if not is_even and len(used) < n:
                 bye_player = self._get_next_bye_player(used)
                 if bye_player:
-                    round_matches.append(Match(bye_player, None))
-                    self.bye_count[bye_player.id] += 1
+                round_matches.append(Match(bye_player, None))
+                self.bye_count[bye_player.id] += 1
 
             self.rounds.append(round_matches)
 
@@ -380,7 +380,7 @@ def load_tournament_data(tournament_id):
         if not tname: return None, None, None
         tname = tname[0]
 
-        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
+        c.execute("SELECT player_id, name,悄悄 points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
         for pid, name, pts, wins, hs, hc, planned, played in player_rows:
@@ -422,12 +422,13 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Simple number input
+# Simple number input – NO value= + key= conflict
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
-    if isinstance(raw, str): raw = raw.strip()
-    if not raw:
+    if isinstance(raw, str):
+        raw = raw.strip()
+    if raw == "":
         st.session_state[int_key] = 0
         return
     try:
@@ -439,14 +440,22 @@ def _sync_text_to_int(text_key, int_key, mn, mx):
 def number_input_simple(key, min_value=0, max_value=26, label="", disabled=False):
     txt = f"{key}_txt"
     val = f"{key}_val"
-    if val not in st.session_state: st.session_state[val] = 0
+    
+    # Initialize
+    if val not in st.session_state:
+        st.session_state[val] = 0
     if txt not in st.session_state:
-        cur = st.session_state[val]
-        st.session_state[txt] = "" if cur == 0 else str(cur)
+        st.session_state[txt] = ""
+
+    # Use key= only, no value=
     st.text_input(
-        label, value=st.session_state[txt], max_chars=2, key=txt,
-        disabled=disabled, help="0-26",
-        on_change=_sync_text_to_int, args=(txt, val, min_value, max_value)
+        label,
+        key=txt,
+        max_chars=2,
+        disabled=disabled,
+        help="0-26",
+        on_change=_sync_text_to_int,
+        args=(txt, val, min_value, max_value)
     )
     return int(st.session_state[val])
 
@@ -615,8 +624,10 @@ def main():
                 k1 = f"hoops1_r{r}_m{m}"
                 k2 = f"hoops2_r{r}_m{m}"
                 v1, v2 = match.get_scores()
-                if f"{k1}_val" not in st.session_state: st.session_state[f"{k1}_val"] = v1
-                if f"{k2}_val" not in st.session_state: st.session_state[f"{k2}_val"] = v2
+                if f"{k1}_val" not in st.session_state:
+                    st.session_state[f"{k1}_val"] = v1
+                if f"{k2}_val" not in st.session_state:
+                    st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
     # --- Render rounds ---
