@@ -44,6 +44,8 @@ def init_schema(conn):
                 wins            INTEGER DEFAULT 0,
                 hoops_scored    INTEGER DEFAULT 0,
                 hoops_conceded  INTEGER DEFAULT 0,
+                planned_games   INTEGER DEFAULT 0,
+                played_results  INTEGER DEFAULT 0,
                 PRIMARY KEY (tournament_id, player_id),
                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
             );
@@ -60,6 +62,12 @@ def init_schema(conn):
                 PRIMARY KEY (tournament_id, round_num, match_num),
                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
             );
+        """)
+        # Add missing columns if they don't exist
+        cur.execute("""
+            ALTER TABLE players 
+            ADD COLUMN IF NOT EXISTS planned_games INTEGER DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS played_results INTEGER DEFAULT 0;
         """)
         conn.commit()
         logger.info("DB schema ensured")
@@ -116,7 +124,7 @@ class Match:
         return self.result if self.result else (0, 0)
 
 # --------------------------------------------------------------------------- #
-# UNIVERSAL SWISS TOURNAMENT – works for 6, 8, 9, 10+ players
+# UNIVERSAL SWISS TOURNAMENT
 # --------------------------------------------------------------------------- #
 class SwissTournament:
     def __init__(self, players_names_or_objects, num_rounds):
@@ -131,13 +139,14 @@ class SwissTournament:
         self.opponents = {p.id: set() for p in self.players}
         self.games_played = {p.id: 0 for p in self.players}
         self.bye_count = {p.id: 0 for p in self.players}
+        self.planned_games = {p.id: 0 for p in self.players}
+        self.games_played_with_result = {p.id: 0 for p in self.players}
         self._generate_all_rounds()
 
     def _get_next_bye_player(self, used):
         candidates = [p for p in self.players if p.id not in used]
         if not candidates:
             return None
-        # Fewest byes → fewest games → lowest ID
         candidates.sort(key=lambda p: (self.bye_count[p.id], self.games_played[p.id], p.id))
         return candidates[0]
 
@@ -145,7 +154,7 @@ class SwissTournament:
         n = self.n
         is_even = n % 2 == 0
 
-        # --- Round 1: Seed top vs bottom ---
+        # --- Round 1 ---
         first_round = []
         used = set()
 
@@ -158,6 +167,8 @@ class SwissTournament:
                 self.opponents[p2.id].add(p1.id)
                 self.games_played[p1.id] += 1
                 self.games_played[p2.id] += 1
+                self.planned_games[p1.id] += 1
+                self.planned_games[p2.id] += 1
                 used.update([p1.id, p2.id])
         else:
             for i in range(n // 2):
@@ -168,6 +179,8 @@ class SwissTournament:
                 self.opponents[p2.id].add(p1.id)
                 self.games_played[p1.id] += 1
                 self.games_played[p2.id] += 1
+                self.planned_games[p1.id] += 1
+                self.planned_games[p2.id] += 1
                 used.update([p1.id, p2.id])
             bye_player = self._get_next_bye_player(used)
             if bye_player:
@@ -177,23 +190,20 @@ class SwissTournament:
 
         self.rounds.append(first_round)
 
-        # --- Rounds 2 to num_rounds ---
+        # --- Rounds 2+ ---
         for rnd in range(1, self.num_rounds):
             round_matches = []
             used = set()
 
-            # Priority: players with fewest games
             heap = []
             for p in self.players:
                 if p.id not in used:
                     heapq.heappush(heap, (self.games_played[p.id], p.id))
 
-            # Pair players
             while len(heap) >= 2:
                 _, id1 = heapq.heappop(heap)
                 p1 = next(p for p in self.players if p.id == id1)
 
-                # Find best opponent: fewest games, not played, not used
                 best_p2 = None
                 best_score = float('inf')
                 best_id2 = None
@@ -208,7 +218,6 @@ class SwissTournament:
                         best_id2 = id2
 
                 if best_p2:
-                    # Remove from heap
                     heap = [x for x in heap if x[1] != best_id2]
                     heapq.heapify(heap)
 
@@ -216,13 +225,13 @@ class SwissTournament:
                     self.opponents[p1.id].add(best_p2.id)
                     self.opponents[best_p2.id].add(p1.id)
                     self.games_played[p1.id] += 1
-                    self.games_played[best_p2.id] += 1
+                    self.games_played[p2.id] += 1
+                    self.planned_games[p1.id] += 1
+                    self.planned_games[best_p2.id] += 1
                     used.update([p1.id, best_p2.id])
                 else:
-                    # No valid opponent — skip (should not happen)
                     break
 
-            # Add bye if odd
             if not is_even and len(used) < n:
                 bye_player = self._get_next_bye_player(used)
                 if bye_player:
@@ -236,6 +245,14 @@ class SwissTournament:
             return
         match = self.rounds[round_num][match_num]
         old1, old2 = match.get_scores()
+
+        # Decrement old result count
+        if match.result and match.player2:
+            if old1 > 0 or old2 > 0:
+                self.games_played_with_result[match.player1.id] -= 1
+                self.games_played_with_result[match.player2.id] -= 1
+
+        # Reset stats
         if match.result and match.player2:
             match.player1.hoops_scored   -= old1
             match.player1.hoops_conceded -= old2
@@ -247,7 +264,13 @@ class SwissTournament:
             elif old2 > old1:
                 match.player2.wins   -= 1
                 match.player2.points -= 1
+
         match.set_result(hoops1, hoops2)
+
+        # Increment new result count
+        if match.player2 and (hoops1 > 0 or hoops2 > 0):
+            self.games_played_with_result[match.player1.id] += 1
+            self.games_played_with_result[match.player2.id] += 1
 
     def get_standings(self):
         return sorted(
@@ -282,8 +305,10 @@ def save_to_db(tournament, tournament_name):
             tid = c.fetchone()[0]
 
         c.executemany(
-            "INSERT INTO players (tournament_id,player_id,name,points,wins,hoops_scored,hoops_conceded) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-            [(tid, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded) for p in tournament.players]
+            "INSERT INTO players (tournament_id,player_id,name,points,wins,hoops_scored,hoops_conceded,planned_games,played_results) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            [(tid, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded,
+              tournament.planned_games.get(p.id, 0),
+              tournament.games_played_with_result.get(p.id, 0)) for p in tournament.players]
         )
 
         match_rows = []
@@ -355,10 +380,10 @@ def load_tournament_data(tournament_id):
         if not tname: return None, None, None
         tname = tname[0]
 
-        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
+        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
-        for pid, name, pts, wins, hs, hc in player_rows:
+        for pid, name, pts, wins, hs, hc, planned, played in player_rows:
             p = Player(pid, name)
             p.points = pts; p.wins = wins; p.hoops_scored = hs; p.hoops_conceded = hc
             player_map[pid] = p
@@ -368,8 +393,10 @@ def load_tournament_data(tournament_id):
         num_rounds = (max_r + 1) if max_r is not None else 1
 
         tournament = SwissTournament(list(player_map.values()), num_rounds)
-        tournament.rounds = [[] for _ in range(num_rounds)]
+        tournament.planned_games = {pid: planned for pid, _, _, _, _, _, planned, _ in player_rows}
+        tournament.games_played_with_result = {pid: played for pid, _, _, _, _, _, _, played in player_rows}
 
+        tournament.rounds = [[] for _ in range(num_rounds)]
         c.execute("SELECT round_num, match_num, player1_id, player2_id, hoops1, hoops2 FROM matches WHERE tournament_id=%s ORDER BY round_num, match_num", (tournament_id,))
         for r, m, p1id, p2id, h1, h2 in c.fetchall():
             p1 = player_map.get(p1id)
@@ -560,7 +587,6 @@ def main():
                     st.session_state.loaded_id = None
                     st.success("Tournament ready – scroll down to enter scores")
 
-                    # --- Post-create recommendation ---
                     rec_rounds = len(new_players) - 1
                     if st.session_state.num_rounds < rec_rounds:
                         st.info(f"**Recommended**: Play **{rec_rounds} rounds** so everyone plays everyone once.")
@@ -632,6 +658,7 @@ def main():
         if recalc:
             for p in tournament.players:
                 p.points = p.wins = p.hoops_scored = p.hoops_conceded = 0
+            tournament.games_played_with_result = {p.id: 0 for p in tournament.players}
             for r, m_idx, k1, k2 in score_keys:
                 match = tournament.get_round_pairings(r)[m_idx]
                 if not match or not match.player2: continue
@@ -641,10 +668,13 @@ def main():
                     st.toast(f"Round {r+1} Match {m_idx+1}: draw – no points", icon="info")
                 match.result = None
                 match.set_result(h1, h2)
+                if h1 > 0 or h2 > 0:
+                    tournament.games_played_with_result[match.player1.id] += 1
+                    tournament.games_played_with_result[match.player2.id] += 1
             st.success("Standings updated")
             st.rerun()
 
-# --- Standings ---
+    # --- Standings ---
     st.subheader("Current Standings")
     standings = tournament.get_standings()
     df = pd.DataFrame([{
@@ -654,11 +684,11 @@ def main():
         "Points": p.points,
         "Net": p.hoops_scored - p.hoops_conceded,
         "Scored": p.hoops_scored,
-        "Conceded": p.hoops_conceded,  # NEW
-        "Planned": tournament.planned_games[p.id],
-        "Played": tournament.games_played_with_result[p.id],
-        "Win %": f"{(p.wins / tournament.games_played_with_result[p.id] * 100):.1f}%" 
-                 if tournament.games_played_with_result[p.id] > 0 else "0.0%"  # NEW
+        "Conceded": p.hoops_conceded,
+        "Planned": tournament.planned_games.get(p.id, 0),
+        "Played": tournament.games_played_with_result.get(p.id, 0),
+        "Win %": f"{(p.wins / tournament.games_played_with_result.get(p.id, 0) * 100):.1f}%" 
+                 if tournament.games_played_with_result.get(p.id, 0) > 0 else "0.0%"
     } for i, p in enumerate(standings)])
     st.dataframe(df, use_container_width=True)
 
