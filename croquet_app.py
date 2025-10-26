@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 import psycopg2
-import random
 import csv
 import os
 from datetime import datetime
 from collections import Counter
 import uuid
 import logging
+import heapq
 
 # --------------------------------------------------------------------------- #
 # Logging
@@ -129,8 +129,8 @@ class SwissTournament:
         self.num_rounds = num_rounds
         self.rounds = []
         self.opponents = {p.id: set() for p in self.players}
-        self.bye_count = {p.id: 0 for p in self.players}
         self.games_played = {p.id: 0 for p in self.players}
+        self.bye_count = {p.id: 0 for p in self.players}
         self._generate_all_rounds()
 
     def _get_next_bye_player(self, used):
@@ -177,54 +177,53 @@ class SwissTournament:
 
         self.rounds.append(first_round)
 
-        # --- Subsequent rounds: Smart pairing ---
-        player_list = self.players.copy()
-
+        # --- Rounds 2 to num_rounds ---
         for rnd in range(1, self.num_rounds):
             round_matches = []
             used = set()
 
-            # Rotate list
-            player_list = player_list[1:] + player_list[:1]
+            # Priority: players with fewest games
+            heap = []
+            for p in self.players:
+                if p.id not in used:
+                    heapq.heappush(heap, (self.games_played[p.id], p.id))
 
-            # Try to pair top half vs bottom half
-            half = n // 2
-            top = player_list[:half]
-            bottom = player_list[half:]
+            # Pair players
+            while len(heap) >= 2:
+                _, id1 = heapq.heappop(heap)
+                p1 = next(p for p in self.players if p.id == id1)
 
-            pairs = []
-            for p1 in top:
-                for p2 in bottom:
-                    if (p1.id not in used and
-                        p2.id not in used and
-                        p2.id not in self.opponents[p1.id]):
-                        pairs.append((p1, p2))
-                        used.update([p1.id, p2.id])
-                        break
+                # Find best opponent: fewest games, not played, not used
+                best_p2 = None
+                best_score = float('inf')
+                best_id2 = None
+                for _, id2 in heap:
+                    p2 = next(p for p in self.players if p.id == id2)
+                    if p2.id in self.opponents[p1.id]:
+                        continue
+                    score = self.games_played[p2.id]
+                    if score < best_score:
+                        best_score = score
+                        best_p2 = p2
+                        best_id2 = id2
 
-            # Fill remaining with best effort
-            remaining = [p for p in self.players if p.id not in used]
-            i = 0
-            while i + 1 < len(remaining):
-                p1 = remaining[i]
-                p2 = remaining[i + 1]
-                if p2.id not in self.opponents[p1.id]:
-                    pairs.append((p1, p2))
-                    used.update([p1.id, p2.id])
-                    i += 2
+                if best_p2:
+                    # Remove from heap
+                    heap = [x for x in heap if x[1] != best_id2]
+                    heapq.heapify(heap)
+
+                    round_matches.append(Match(p1, best_p2))
+                    self.opponents[p1.id].add(best_p2.id)
+                    self.opponents[best_p2.id].add(p1.id)
+                    self.games_played[p1.id] += 1
+                    self.games_played[best_p2.id] += 1
+                    used.update([p1.id, best_p2.id])
                 else:
-                    i += 1
-
-            # Create matches
-            for p1, p2 in pairs:
-                round_matches.append(Match(p1, p2))
-                self.opponents[p1.id].add(p2.id)
-                self.opponents[p2.id].add(p1.id)
-                self.games_played[p1.id] += 1
-                self.games_played[p2.id] += 1
+                    # No valid opponent — skip (should not happen)
+                    break
 
             # Add bye if odd
-            if not is_even:
+            if not is_even and len(used) < n:
                 bye_player = self._get_next_bye_player(used)
                 if bye_player:
                     round_matches.append(Match(bye_player, None))
@@ -539,6 +538,16 @@ def main():
             st.session_state.num_rounds = st.number_input(
                 "Rounds", 1, 15, st.session_state.num_rounds, disabled=locked
             )
+
+            # --- Smart recommendation note ---
+            player_count = len([p for p in players_txt.splitlines() if p.strip()])
+            if player_count >= 2:
+                rec = player_count - 1
+                if player_count % 2 == 0:
+                    st.markdown(f"**Perfect**: Play **{rec} rounds** → everyone plays everyone once.")
+                else:
+                    st.markdown(f"**Recommended**: Play **{rec} rounds** → everyone plays **{rec} games**, **1 bye each** (cannot play *all* opponents with byes).")
+
             if st.form_submit_button("Create", disabled=locked):
                 new_players = [p.strip() for p in players_txt.splitlines() if p.strip()]
                 if len(new_players) < 2:
@@ -550,6 +559,19 @@ def main():
                     st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
                     st.session_state.loaded_id = None
                     st.success("Tournament ready – scroll down to enter scores")
+
+                    # --- Post-create recommendation ---
+                    rec_rounds = len(new_players) - 1
+                    if st.session_state.num_rounds < rec_rounds:
+                        st.info(f"**Recommended**: Play **{rec_rounds} rounds** so everyone plays everyone once.")
+                    elif st.session_state.num_rounds > rec_rounds:
+                        st.warning(f"**Note**: {st.session_state.num_rounds} rounds > {rec_rounds}. Some players may play twice.")
+                    else:
+                        if len(new_players) % 2 == 0:
+                            st.success(f"**Perfect**: {rec_rounds} rounds → everyone plays everyone once!")
+                        else:
+                            st.success(f"**Perfect**: {rec_rounds} rounds → everyone plays {rec_rounds} games, 1 bye each.")
+
                     st.rerun()
 
     # --- Active tournament ---
