@@ -129,7 +129,16 @@ class SwissTournament:
         self.num_rounds = num_rounds
         self.rounds = []
         self.opponents = {p.id: set() for p in self.players}
+        self.bye_count = {p.id: 0 for p in self.players}  # Track bye fairness
         self._generate_all_rounds()
+
+    def _get_next_bye_player(self, used):
+        """Return player with fewest byes (tiebreak: lowest ID)"""
+        candidates = [p for p in self.players if p.id not in used]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda p: (self.bye_count[p.id], p.id))
+        return candidates[0]
 
     def _generate_all_rounds(self):
         n = self.n
@@ -155,9 +164,11 @@ class SwissTournament:
                 self.opponents[p1.id].add(p2.id)
                 self.opponents[p2.id].add(p1.id)
                 used.update([p1.id, p2.id])
-            bye_player = next(p for p in self.players if p.id not in used)
-            first_round.append(Match(bye_player, None))
-            used.add(bye_player.id)
+            bye_player = self._get_next_bye_player(used)
+            if bye_player:
+                first_round.append(Match(bye_player, None))
+                self.bye_count[bye_player.id] += 1
+                used.add(bye_player.id)
 
         self.rounds.append(first_round)
 
@@ -189,16 +200,21 @@ class SwissTournament:
                             if cand.id != p1.id and cand.id not in used and cand.id not in self.opponents[p1.id]:
                                 pairs.append((p1, cand))
                                 break
+                        else:
+                            # Last resort: any unused
+                            for cand in all_players:
+                                if cand.id != p1.id and cand.id not in used:
+                                    pairs.append((p1, cand))
+                                    break
 
             # Process pairs
             for p1, p2 in pairs:
                 if p1.id == p2.id or p2.id in self.opponents[p1.id]:
-                    # Emergency swap
                     available = [p for p in self.players if p.id not in used and p.id not in self.opponents[p1.id]]
                     if available:
                         p2 = available[0]
                     else:
-                        continue  # skip broken match
+                        continue
 
                 round_matches.append(Match(p1, p2))
                 self.opponents[p1.id].add(p2.id)
@@ -207,14 +223,13 @@ class SwissTournament:
 
             # Add bye if odd
             if not is_even:
-                bye_candidates = [p for p in self.players if p.id not in used]
-                if bye_candidates:
-                    bye_player = bye_candidates[0]
+                bye_player = self._get_next_bye_player(used)
+                if bye_player:
                     round_matches.append(Match(bye_player, None))
+                    self.bye_count[bye_player.id] += 1
 
             self.rounds.append(round_matches)
 
-    # --- Record, standings, pairings ---
     def record_result(self, round_num, match_num, hoops1, hoops2):
         if not (0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num])):
             return
@@ -425,7 +440,7 @@ def load_selected_tournament(tid):
     st.session_state.tournament = tournament
     st.session_state.tournament_name = name
     st.session_state.num_rounds = rounds
-    st.session_state.players = [p.name for p in tournament.players]
+    st.session_state.players = [p.name for p bye in tournament.players]
     st.session_state.loaded_id = tid
     st.success(f"Loaded **{name}**")
 
