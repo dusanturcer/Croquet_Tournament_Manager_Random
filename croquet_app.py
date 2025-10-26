@@ -135,7 +135,7 @@ class SwissTournament:
         n = self.n
         is_even = n % 2 == 0
 
-        # Round 1: Deterministic pairing
+        # --- Round 1: Deterministic pairing ---
         first_round = []
         used = set()
 
@@ -157,44 +157,41 @@ class SwissTournament:
                 used.update([p1.id, p2.id])
             bye_player = next(p for p in self.players if p.id not in used)
             first_round.append(Match(bye_player, None))
+            used.add(bye_player.id)
 
         self.rounds.append(first_round)
 
-        # Subsequent rounds
+        # --- Rounds 2+ ---
         if is_even:
             top = self.players[:n//2]
             bottom = self.players[n//2:]
         else:
-            top = self.players[:-1]
-            bye_pool = [self.players[-1]]
+            all_players = self.players.copy()
 
         for rnd in range(1, self.num_rounds):
-            if is_even:
-                bottom = bottom[1:] + bottom[:1]
-            else:
-                top = top[1:] + top[:1]
-
             round_matches = []
             used = set()
 
-            for i in range(len(top)):
-                p1 = top[i]
-                if is_even:
-                    p2 = bottom[i]
-                else:
-                    p2 = bye_pool[0]
-                    bye_pool = [top[i]]
+            if is_even:
+                bottom = bottom[1:] + bottom[:1]
+                pairs = list(zip(top, bottom))
+            else:
+                all_players = all_players[1:] + all_players[:1]
+                pairs = [(all_players[i], all_players[i + n//2]) for i in range(n//2)]
 
-                if p2.id in self.opponents[p1.id]:
-                    candidates = [p for p in self.players if p.id not in used and p.id not in self.opponents[p1.id]]
-                    if candidates:
-                        p2 = random.choice(candidates)
+            for p1, p2 in pairs:
+                while p2.id in self.opponents[p1.id]:
+                    idx = pairs.index((p1, p2))
+                    if idx + 1 < len(pairs):
+                        pairs[idx], pairs[idx + 1] = pairs[idx + 1], pairs[idx]
+                        p2 = pairs[idx][1]
+                    else:
+                        break
 
-                if p2:
-                    round_matches.append(Match(p1, p2))
-                    self.opponents[p1.id].add(p2.id)
-                    self.opponents[p2.id].add(p1.id)
-                    used.update([p1.id, p2.id])
+                round_matches.append(Match(p1, p2))
+                self.opponents[p1.id].add(p2.id)
+                self.opponents[p2.id].add(p1.id)
+                used.update([p1.id, p2.id])
 
             if not is_even:
                 bye_player = next(p for p in self.players if p.id not in used)
@@ -202,6 +199,7 @@ class SwissTournament:
 
             self.rounds.append(round_matches)
 
+    # --- Record, standings, pairings ---
     def record_result(self, round_num, match_num, hoops1, hoops2):
         if not (0 <= round_num < len(self.rounds) and 0 <= match_num < len(self.rounds[round_num])):
             return
@@ -229,6 +227,7 @@ class SwissTournament:
 
     def get_round_pairings(self, round_num):
         return self.rounds[round_num] if 0 <= round_num < len(self.rounds) else []
+
 
 # --------------------------------------------------------------------------- #
 # DB helpers
@@ -386,9 +385,12 @@ def number_input_simple(key, min_value=0, max_value=26, label="", disabled=False
     if val not in st.session_state: st.session_state[val] = 0
     if txt not in st.session_state:
         cur = st.session_state[val]
-        st.session_state[txt] = "" if cur == 0 else str(cur)  # Fixed: no "-"
-    st.text_input(label, value=st.session_state[txt], max_chars=2, key=txt, disabled=disabled, help="0-26",
-                  on_change=_sync_text_to_int, args=(txt, val, min_value, max_value))
+        st.session_state[txt] = "" if cur == 0 else str(cur)
+    st.text_input(
+        label, value=st.session_state[txt], max_chars=2, key=txt,
+        disabled=disabled, help="0-26",
+        on_change=_sync_text_to_int, args=(txt, val, min_value, max_value)
+    )
     return int(st.session_state[val])
 
 # --------------------------------------------------------------------------- #
