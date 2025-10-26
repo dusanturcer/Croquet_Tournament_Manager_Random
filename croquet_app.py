@@ -440,7 +440,7 @@ def load_selected_tournament(tid):
     st.session_state.tournament = tournament
     st.session_state.tournament_name = name
     st.session_state.num_rounds = rounds
-    st.session_state.players = [p.name for p bye in tournament.players]
+    st.session_state.players = [p.name for p in tournament.players]
     st.session_state.loaded_id = tid
     st.success(f"Loaded **{name}**")
 
