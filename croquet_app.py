@@ -63,7 +63,7 @@ def init_schema(conn):
                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
             );
         """)
-        # Add missing columns if they don't exist
+        # Ensure columns exist
         cur.execute("""
             ALTER TABLE players 
             ADD COLUMN IF NOT EXISTS planned_games INTEGER DEFAULT 0,
@@ -225,7 +225,7 @@ class SwissTournament:
                     self.opponents[p1.id].add(best_p2.id)
                     self.opponents[best_p2.id].add(p1.id)
                     self.games_played[p1.id] += 1
-                    self.games_played[p2.id] += 1
+                    self.games_played[best_p2.id] += 1
                     self.planned_games[p1.id] += 1
                     self.planned_games[best_p2.id] += 1
                     used.update([p1.id, best_p2.id])
@@ -620,41 +620,49 @@ def main():
                 score_keys.append((r, m, k1, k2))
 
     # --- Render rounds ---
+    st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
         real_matches = [m for m in pairings if m and m.player2]
         complete = all(sum(m.get_scores()) > 0 for m in real_matches)
-        label = f"Round {r+1} ({len(real_matches)} matches)"
-        with st.expander(label, expanded=(not complete)):
-            c1, c2 = st.columns(2)
+        label = f"Round {r+1} – {len(real_matches)} matches"
+        with st.expander(label, expanded=not complete):
+            cols = st.columns(2)
             display_idx = 1
             for match in real_matches:
-                entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
-                _, _, k1, k2 = entry
-                col = c1 if display_idx % 2 else c2
+                try:
+                    entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
+                    _, _, k1, k2 = entry
+                except StopIteration:
+                    continue
+
+                col = cols[0] if display_idx % 2 else cols[1]
                 with col:
-                    n, p1, h1, h2, p2, stat = st.columns([0.5, 2, 1, 1, 2, 1.5])
-                    with n: st.markdown(f"**{display_idx}:**")
-                    with p1: st.markdown(f"**{match.player1.name}**")
+                    n, p1, h1, h2, p2, stat = st.columns([0.4, 1.8, 0.8, 0.8, 1.8, 1.2])
+                    with n: st.write(f"**{display_idx}**")
+                    with p1: st.write(f"**{match.player1.name}**")
                     with h1: live1 = number_input_simple(k1, disabled=locked)
                     with h2: live2 = number_input_simple(k2, disabled=locked)
-                    with p2: st.markdown(f"**{match.player2.name}**")
+                    with p2: st.write(f"**{match.player2.name}**")
                     with stat:
                         if live1 == live2 == 0:
-                            st.metric("Score", "–")
+                            st.write("–")
                         else:
-                            st.metric("Score", f"{live1}-{live2}",
-                                      delta=("P1" if live1 > live2 else "P2" if live2 > live1 else "Draw"))
-                    st.markdown("---")
-                    display_idx += 1
+                            winner = "P1" if live1 > live2 else "P2" if live2 > live1 else "Draw"
+                            st.metric("", f"{live1}–{live2}", delta=winner)
+                display_idx += 1
         if complete:
-            st.success("**All games in this round recorded**")
+            st.success(f"**Round {r+1} complete**")
 
     # --- Recalculate ---
-    with st.form("recalc_form"):
-        st.markdown("---")
-        recalc = st.form_submit_button("Recalculate Standings", disabled=locked)
-        st.markdown("---")
+    st.markdown("---")
+    with st.container():
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            recalc = st.button("Recalculate Standings", disabled=locked, use_container_width=True)
+        with col2:
+            st.write("")  # spacer
+
         if recalc:
             for p in tournament.players:
                 p.points = p.wins = p.hoops_scored = p.hoops_conceded = 0
@@ -664,17 +672,16 @@ def main():
                 if not match or not match.player2: continue
                 h1 = st.session_state.get(f"{k1}_val", 0)
                 h2 = st.session_state.get(f"{k2}_val", 0)
-                if h1 == h2 and h1 > 0:
-                    st.toast(f"Round {r+1} Match {m_idx+1}: draw – no points", icon="info")
                 match.result = None
                 match.set_result(h1, h2)
                 if h1 > 0 or h2 > 0:
                     tournament.games_played_with_result[match.player1.id] += 1
                     tournament.games_played_with_result[match.player2.id] += 1
-            st.success("Standings updated")
+            st.success("Standings recalculated!")
             st.rerun()
 
-    # --- Standings ---
+    # --- Standings (ALWAYS VISIBLE) ---
+    st.markdown("---")
     st.subheader("Current Standings")
     standings = tournament.get_standings()
     df = pd.DataFrame([{
@@ -690,9 +697,11 @@ def main():
         "Win %": f"{(p.wins / tournament.games_played_with_result.get(p.id, 0) * 100):.1f}%" 
                  if tournament.games_played_with_result.get(p.id, 0) > 0 else "0.0%"
     } for i, p in enumerate(standings)])
-    st.dataframe(df, use_container_width=True)
+    
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
     # --- Save / Export ---
+    st.markdown("---")
     st.subheader("Save & Export")
     c1, c2, c3 = st.columns(3)
     with c1:
