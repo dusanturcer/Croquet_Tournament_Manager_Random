@@ -644,12 +644,21 @@ def main():
             st.success("Standings updated")
             st.rerun()
 
-    # --- Standings ---
+# --- Standings ---
     st.subheader("Current Standings")
     standings = tournament.get_standings()
     df = pd.DataFrame([{
-        "Rank": i+1, "Name": p.name, "Wins": p.wins, "Points": p.points,
-        "Net": p.hoops_scored - p.hoops_conceded, "Scored": p.hoops_scored
+        "Rank": i+1,
+        "Name": p.name,
+        "Wins": p.wins,
+        "Points": p.points,
+        "Net": p.hoops_scored - p.hoops_conceded,
+        "Scored": p.hoops_scored,
+        "Conceded": p.hoops_conceded,  # NEW
+        "Planned": tournament.planned_games[p.id],
+        "Played": tournament.games_played_with_result[p.id],
+        "Win %": f"{(p.wins / tournament.games_played_with_result[p.id] * 100):.1f}%" 
+                 if tournament.games_played_with_result[p.id] > 0 else "0.0%"  # NEW
     } for i, p in enumerate(standings)])
     st.dataframe(df, use_container_width=True)
 
