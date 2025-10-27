@@ -382,7 +382,7 @@ def load_tournament_data(tournament_id):
         if not tname: return None, None, None
         tname = tname[0]
 
-        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned702_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
+        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
         for pid, name, pts, wins, hs, hc, planned, played in player_rows:
