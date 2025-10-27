@@ -16,13 +16,13 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
-# DB connection – uses DATABASE_URL (Render/Supavisor)
+# DB connection – uses DATABASE_URL (Supavisor recommended)
 # --------------------------------------------------------------------------- #
 def get_connection():
     url = os.getenv("DATABASE_URL")
     if not url:
-        st.error("DATABASE_URL not set! Add it in **Environment** (Render).")
-        raise RuntimeError("DATABASE_URL not set")
+        st.error("DATABASE_URL not set! Add it in **Secrets** (Streamlit) or **Environment** (Render).")
+        raise RuntimeError("DATABASE_URL not set in environment")
     return psycopg2.connect(url, sslmode="require")
 
 def init_schema(conn):
@@ -141,9 +141,7 @@ class SwissTournament:
         self.bye_count = {p.id: 0 for p in self.players}
         self.planned_games = {p.id: 0 for p in self.players}
         self.games_played_with_result = {p.id: 0 for p in self.players}
-
-        # Generate all rounds immediately
-        self._generate_all_rounds()
+        self._generate(out_rounds())
 
     def _get_next_bye_player(self, used):
         candidates = [p for p in self.players if p.id not in used]
@@ -382,7 +380,7 @@ def load_tournament_data(tournament_id):
         if not tname: return None, None, None
         tname = tname[0]
 
-        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned702_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
+        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
         for pid, name, pts, wins, hs, hc, planned, played in player_rows:
@@ -443,11 +441,13 @@ def number_input_simple(key, min_value=0, max_value=26, label=" ", disabled=Fals
     txt = f"{key}_txt"
     val = f"{key}_val"
     
+    # Initialize
     if val not in st.session_state:
         st.session_state[val] = 0
     if txt not in st.session_state:
         st.session_state[txt] = ""
 
+    # Mobile-friendly styling
     st.markdown("""
     <style>
         div[data-testid="stTextInput"] input {
@@ -591,13 +591,14 @@ def main():
                 "Rounds", 1, 15, st.session_state.num_rounds, disabled=locked
             )
 
+            # --- Smart recommendation note ---
             player_count = len([p for p in players_txt.splitlines() if p.strip()])
             if player_count >= 2:
                 rec = player_count - 1
                 if player_count % 2 == 0:
                     st.markdown(f"**Perfect**: Play **{rec} rounds** → everyone plays everyone once.")
                 else:
-                    st.markdown(f"**Recommended**: Play **{rec} rounds** → everyone plays **{rec} games**, **1 bye each**.")
+                    st.markdown(f"**Recommended**: Play **{rec} rounds** → everyone plays **{rec} games**, **1 bye each** (cannot play *all* opponents with byes).")
 
             if st.form_submit_button("Create", disabled=locked):
                 new_players = [p.strip() for p in players_txt.splitlines() if p.strip()]
@@ -610,6 +611,18 @@ def main():
                     st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
                     st.session_state.loaded_id = None
                     st.success("Tournament ready – scroll down to enter scores")
+
+                    rec_rounds = len(new_players) - 1
+                    if st.session_state.num_rounds < rec_rounds:
+                        st.info(f"**Recommended**: Play **{rec_rounds} rounds** so everyone plays everyone once.")
+                    elif st.session_state.num_rounds > rec_rounds:
+                        st.warning(f"**Note**: {st.session_state.num_rounds} rounds > {rec_rounds}. Some players may play twice.")
+                    else:
+                        if len(new_players) % 2 == 0:
+                            st.success(f"**Perfect**: {rec_rounds} rounds → everyone plays everyone once!")
+                        else:
+                            st.success(f"**Perfect**: {rec_rounds} rounds → everyone plays {rec_rounds} games, 1 bye each.")
+
                     st.rerun()
 
     # --- Active tournament ---
@@ -675,7 +688,7 @@ def main():
         with col1:
             recalc = st.button("Recalculate Standings", disabled=locked, use_container_width=True)
         with col2:
-            st.write("")
+            st.write("")  # spacer
 
         if recalc:
             for p in tournament.players:
@@ -694,7 +707,7 @@ def main():
             st.success("Standings recalculated!")
             st.rerun()
 
-    # --- Standings ---
+    # --- Standings (ALWAYS VISIBLE) ---
     st.markdown("---")
     st.subheader("Current Standings")
     standings = tournament.get_standings()

@@ -1,4 +1,4 @@
-streamlit==1.49.0
-pandas
-openpyxl
-PyGithub==2.4.0
+streamlit>=1.38
+pandas>=2.2
+psycopg2-binary>=2.9
+openpyxl>=3.1
