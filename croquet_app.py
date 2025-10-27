@@ -141,7 +141,7 @@ class SwissTournament:
         self.bye_count = {p.id: 0 for p in self.players}
         self.planned_games = {p.id: 0 for p in self.players}
         self.games_played_with_result = {p.id: 0 for p in self.players}
-        self._generate_all_rounds()
+        self._generate(out_rounds())
 
     def _get_next_bye_player(self, used):
         candidates = [p for p in self.players if p.id not in used]
@@ -422,7 +422,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Simple number input – NO value= + key= conflict
+# Mobile-friendly number input
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -437,7 +437,7 @@ def _sync_text_to_int(text_key, int_key, mn, mx):
     except ValueError:
         st.session_state[int_key] = 0
 
-def number_input_simple(key, min_value=0, max_value=26, label="", disabled=False):
+def number_input_simple(key, min_value=0, max_value=26, label=" ", disabled=False):
     txt = f"{key}_txt"
     val = f"{key}_val"
     
@@ -447,7 +447,23 @@ def number_input_simple(key, min_value=0, max_value=26, label="", disabled=False
     if txt not in st.session_state:
         st.session_state[txt] = ""
 
-    # Use key= only, no value=
+    # Mobile-friendly styling
+    st.markdown("""
+    <style>
+        div[data-testid="stTextInput"] input {
+            font-size: 1.1rem !important;
+            padding: 8px !important;
+            text-align: center;
+            background-color: white !important;
+            color: black !important;
+        }
+        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input {
+            background-color: #333 !important;
+            color: white !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.text_input(
         label,
         key=txt,
@@ -652,8 +668,8 @@ def main():
                     n, p1, h1, h2, p2, stat = st.columns([0.4, 1.8, 0.8, 0.8, 1.8, 1.2])
                     with n: st.write(f"**{display_idx}**")
                     with p1: st.write(f"**{match.player1.name}**")
-                    with h1: live1 = number_input_simple(k1, disabled=locked)
-                    with h2: live2 = number_input_simple(k2, disabled=locked)
+                    with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
+                    with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
                     with p2: st.write(f"**{match.player2.name}**")
                     with stat:
                         if live1 == live2 == 0:
