@@ -235,8 +235,8 @@ class SwissTournament:
             if not is_even and len(used) < n:
                 bye_player = self._get_next_bye_player(used)
                 if bye_player:
-                round_matches.append(Match(bye_player, None))
-                self.bye_count[bye_player.id] += 1
+                    round_matches.append(Match(bye_player, None))
+                    self.bye_count[bye_player.id] += 1
 
             self.rounds.append(round_matches)
 
@@ -380,7 +380,7 @@ def load_tournament_data(tournament_id):
         if not tname: return None, None, None
         tname = tname[0]
 
-        c.execute("SELECT player_id, name,悄悄 points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
+        c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
         for pid, name, pts, wins, hs, hc, planned, played in player_rows:
