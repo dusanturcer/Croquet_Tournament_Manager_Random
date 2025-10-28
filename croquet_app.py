@@ -225,9 +225,9 @@ class SwissTournament:
                     self.opponents[p1.id].add(best_p2.id)
                     self.opponents[best_p2.id].add(p1.id)
                     self.games_played[p1.id] += 1
-                    self.games_played[best_p2.id] += 1
+                    self.games_played[p2.id] += 1
                     self.planned_games[p1.id] += 1
-                    self.planned_games[best_p2.id] += 1
+                    self.planned_games[p2.id] += 1
                     used.update([p1.id, best_p2.id])
                 else:
                     break
@@ -419,7 +419,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Mobile-friendly number input
+# 3× WIDER single-digit input (0-9)
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -434,7 +434,7 @@ def _sync_text_to_int(text_key, int_key, mn, mx):
     except ValueError:
         st.session_state[int_key] = 0
 
-def number_input_simple(key, min_value=0, max_value=26, label=" ", disabled=False):
+def number_input_simple(key, min_value=0, max_value=9, label=" ", disabled=False):
     txt = f"{key}_txt"
     val = f"{key}_val"
     
@@ -446,11 +446,12 @@ def number_input_simple(key, min_value=0, max_value=26, label=" ", disabled=Fals
     st.text_input(
         label,
         key=txt,
-        max_chars=2,
+        max_chars=1,
         disabled=disabled,
-        help="0-26",
+        help="0-9",
         on_change=_sync_text_to_int,
-        args=(txt, val, min_value, max_value)
+        args=(txt, val, min_value, max_value),
+        label_visibility="collapsed"
     )
     return int(st.session_state[val])
 
@@ -487,17 +488,18 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # BIG SCORE FIELDS + ALIGNED NAMES + TIGHT LAYOUT               #
+    # BIG + 3× WIDE SCORE FIELDS + ALIGNED NAMES + TIGHT LAYOUT     #
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        /* 1. BIG SCORE INPUTS (3× larger) */
+        /* 1. BIG + 3× WIDE SCORE INPUTS */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
             padding: 12px !important;
             height: 3.2rem !important;
             text-align: center;
-            min-width: 70px !important;
+            min-width: 120px !important;
+            width: 120px !important;
             background-color: white !important;
             color: black !important;
         }
@@ -675,7 +677,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (4 per row, big fields, aligned) ---
+    # --- Render rounds (4 per row, 3× wide fields) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
