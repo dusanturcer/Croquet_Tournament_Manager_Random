@@ -756,48 +756,55 @@ def main():
             match_no = 1
             for i in range(0, len(real_matches), 2):
                 batch = real_matches[i:i+2]
-                cols = st.columns(2)
 
-                for idx, match in enumerate(batch):
-                    entry = next((e for e in st.session_state.score_keys
-                                 if e[0] == r and e[1] == pairings.index(match)), None)
-                    if not entry:
-                        continue
-                    _, _, k1, k2 = entry
+                # Use container + dynamic columns for mobile/desktop
+                with st.container():
+                    # On mobile: 1 column, on desktop: 2 columns
+                    col_specs = [1] if len(batch) == 1 else [1, 1]
+                    cols = st.columns(col_specs, gap="small")
 
-                    live1 = int(st.session_state.get(f"{k1}_val", 0))
-                    live2 = int(st.session_state.get(f"{k2}_val", 0))
+                    for idx, match in enumerate(batch):
+                        with cols[idx]:
+                            # === SAME MATCH RENDERING CODE ===
+                            entry = next((e for e in st.session_state.score_keys
+                                         if e[0] == r and e[1] == pairings.index(match)), None)
+                            if not entry:
+                                continue
+                            _, _, k1, k2 = entry
 
-                    with cols[idx]:
-                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+                            live1 = int(st.session_state.get(f"{k1}_val", 0))
+                            live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                        with n: st.write(f"**{match_no}**")
-                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+                            n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
 
-                        with h1:
-                            new1 = number_input_simple(k1, label=" ", disabled=locked)
-                            if new1 != live1:
-                                tournament.record_result(r, pairings.index(match), new1, live2)
+                            with n: st.write(f"**{match_no}**")
+                            with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
 
-                        with h2:
-                            new2 = number_input_simple(k2, label=" ", disabled=locked)
-                            if new2 != live2:
-                                tournament.record_result(r, pairings.index(match), live1, new2)
+                            with h1:
+                                new1 = number_input_simple(k1, label=" ", disabled=locked)
+                                if new1 != live1:
+                                    tournament.record_result(r, pairings.index(match), new1, live2)
 
-                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+                            with h2:
+                                new2 = number_input_simple(k2, label=" ", disabled=locked)
+                                if new2 != live2:
+                                    tournament.record_result(r, pairings.index(match), live1, new2)
 
-                        if live1 == live2 and live1 != 0:
-                            st.error("Ties are not allowed!")
+                            with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-                        with stat:
-                            if live1 == live2 == 0:
-                                st.write("–")
-                            else:
-                                winner = "P1" if live1 > live2 else "P2"
-                                st.markdown(
-                                    f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
-                                    unsafe_allow_html=True
-                                )
+                            if live1 == live2 and live1 != 0:
+                                st.error("Ties are not allowed!")
+
+                            with stat:
+                                if live1 == live2 == 0:
+                                    st.write("–")
+                                else:
+                                    winner = "P1" if live1 > live2 else "P2"
+                                    st.markdown(
+                                        f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
+                                        unsafe_allow_html=True
+                                    )
+                            # === END MATCH RENDERING ===
                     match_no += 1
 
         if complete:
