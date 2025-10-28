@@ -492,34 +492,13 @@ def main():
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        /* 1. PUSH MAIN PAGE DOWN – KEEP STREAMLIT HEADER VISIBLE */
+        /* PUSH PAGE DOWN – SHOW FULL HEADER */
         .block-container {
             padding-top: 4rem !important;
             padding-bottom: 0.8rem !important;
         }
 
-        /* 2. COMPLETELY REMOVE FORM PADDING – FIX CUT-OFF */
-        div[data-testid="stForm"] {
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-            margin-top: 0 !important;
-        }
-        div[data-testid="stForm"] > div > div {
-            padding-top: 0 !important;
-        }
-
-        /* 3. FIX TEXT INPUT LABELS & FIELDS INSIDE FORMS */
-        div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
-            font-size: 1rem !important;
-        }
-        div[data-testid="stForm"] div[data-testid="stTextInput"] input {
-            margin-top: 0.2rem !important;
-            height: 2.8rem !important;
-        }
-
-        /* 4. SCORE INPUTS – 160px WIDE, BIG FONT */
+        /* SCORE INPUTS – 160px WIDE */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
             padding: 10px !important;
@@ -535,7 +514,7 @@ def main():
             color: white !important;
         }
 
-        /* 5. PLAYER NAMES */
+        /* PLAYER NAMES */
         .player-name {
             display: flex;
             align-items: center;
@@ -548,7 +527,7 @@ def main():
             padding-left: 2px;
         }
 
-        /* 6. RESULT */
+        /* RESULT */
         .result-metric {
             min-width: 90px !important;
             text-align: center;
@@ -562,7 +541,7 @@ def main():
             align-items: center;
         }
 
-        /* 7. REMOVE GAPS */
+        /* REMOVE GAPS */
         .stExpander > div > div > div {
             padding-top: 0.2rem !important;
             padding-bottom: 0.2rem !important;
@@ -573,6 +552,11 @@ def main():
         }
         .stColumns > div > div {
             margin: 0 !important;
+        }
+
+        /* FIX TEXT INPUT IN EXPANDER (NO CLIPPING) */
+        .stTextInput > div > div {
+            padding-top: 0 !important;
         }
     </style>
     """, unsafe_allow_html=True)
