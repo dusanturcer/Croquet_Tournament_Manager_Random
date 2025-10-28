@@ -564,6 +564,41 @@ def main():
     button[kind="secondaryFormSubmit"]:hover {
         background-color:#218838!important;
     }
+    /* MOBILE: ONE MATCH PER ROW */
+    @media (max-width: 768px) {
+        /* Force the outer "2-column" container to become a single column */
+        div[data-testid="stHorizontalBlock"] > div > div {
+    materias        flex-direction: column !important;
+            width: 100% !important;
+        }
+
+        /* Each match column takes full width */
+        div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+            padding-left: 0.2rem !important;
+            padding-right: 0.2rem !important;
+        }
+
+        /* Make player names wrap nicely */
+        .player-name {
+            white-space: normal !important;
+            font-size: 1.0rem !important;
+            padding: 4px 0 !important;
+        }
+
+        /* Score inputs – a bit smaller on mobile */
+        div[data-testid="stTextInput"] input:not([aria-label=""]) {
+            font-size: 1.6rem !important;
+            min-width: 44px !important;
+            padding: 6px 2px !important;
+        }
+
+        /* Result metric – full width */
+        .result-metric {
+            min-width: 70px !important;
+        }
+    }            
     </style>
     """, unsafe_allow_html=True)
 
