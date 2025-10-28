@@ -419,7 +419,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# 3× WIDER single-digit input (0-9)
+# Single-digit input (0-9) – wide
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -488,18 +488,18 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # BIG + 3× WIDE SCORE FIELDS + ALIGNED NAMES + TIGHT LAYOUT     #
+    # WIDE SCORE FIELDS + SPACING + CLEAN RESULT ICON               #
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        /* 1. BIG + 3× WIDE SCORE INPUTS */
+        /* 1. WIDE SCORE INPUTS – 180px */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
             padding: 12px !important;
             height: 3.2rem !important;
             text-align: center;
-            min-width: 120px !important;
-            width: 120px !important;
+            min-width: 180px !important;
+            width: 180px !important;
             background-color: white !important;
             color: black !important;
         }
@@ -508,7 +508,7 @@ def main():
             color: white !important;
         }
 
-        /* 2. PLAYER NAMES – aligned with score fields */
+        /* 2. PLAYER NAMES – aligned */
         .player-name {
             display: flex;
             align-items: center;
@@ -522,27 +522,36 @@ def main():
             text-overflow: ellipsis;
         }
 
-        /* 3. TIGHT LAYOUT – remove all gaps */
-        .stExpander > div > div > div {
-            padding-top: 0.3rem !important;
-            padding-bottom: 0.3rem !important;
+        /* 3. HORIZONTAL SPACING BETWEEN SCORE FIELDS */
+        .score-gap > div {
+            padding-left: 12px !important;
+            padding-right: 12px !important;
         }
-        .stColumns > div {
-            padding-left: 0.2rem !important;
-            padding-right: 0.2rem !important;
+
+        /* 4. RESULT METRIC – more breathing room */
+        .result-metric {
+            min-width: 110px !important;
+            text-align: center;
         }
-        .stColumns > div > div {
-            margin: 0 !important;
-        }
-        .stMetric {
-            font-size: 0.9rem !important;
-            margin: 0 !important;
-        }
-        .stMetric > div {
+        .result-metric > div {
             height: 3.2rem !important;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 1.1rem !important;
+        }
+
+        /* 5. TIGHT BUT NOT CRUSHED LAYOUT */
+        .stExpander > div > div > div {
+            padding-top: 0.4rem !important;
+            padding-bottom: 0.4rem !important;
+        }
+        .stColumns > div {
+            padding-left: 0.3rem !important;
+            padding-right: 0.3rem !important;
+        }
+        .stColumns > div > div {
+            margin: 0 !important;
         }
         .block-container {
             padding-top: 1rem !important;
@@ -677,7 +686,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (4 per row, 3× wide fields) ---
+    # --- Render rounds (4 per row, wide fields, spacing) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -696,7 +705,12 @@ def main():
                         continue
 
                     with cols[idx]:
-                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.3, 0.6, 0.6, 1.3, 0.9])
+                        # Add spacing container
+                        with st.container():
+                            st.markdown('<div class="score-gap">', unsafe_allow_html=True)
+                            n, p1, h1, h2, p2, stat = st.columns([0.3, 1.4, 0.7, 0.7, 1.4, 1.0])
+                            st.markdown('</div>', unsafe_allow_html=True)
+
                         with n: st.write(f"**{i+idx+1}**")
                         with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
                         with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
@@ -707,7 +721,8 @@ def main():
                                 st.write("–")
                             else:
                                 winner = "P1" if live1 > live2 else "P2" if live2 > live1 else "Draw"
-                                st.metric("", f"{live1}–{live2}", delta=winner, delta_color="normal")
+                                delta_icon = "Win" if live1 > live2 else "Win" if live2 > live1 else "Draw"
+                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{delta_icon}</small></div>', unsafe_allow_html=True)
         if complete:
             st.success(f"**Round {r+1} complete**")
 
