@@ -139,7 +139,7 @@ class SwissTournament:
         self.games_played = {p.id: 0 for p in self.players}
         self.bye_count = {p.id: 0 for p in self.players}
         self.planned_games = {p.id: 0 for p in self.players}
-        self.games_play_played_with_result = {p.id: 0 for p in self.players}
+        self.games_played_with_result = {p.id: 0 for p in self.players}
 
         self._generate_all_rounds()
 
@@ -582,7 +582,8 @@ def main():
     # --- Sidebar ---
     with st.sidebar:
         st.header("App Status")
-        st578.session_state.is_locked = st.radio(
+        # FIXED LINE BELOW
+        st.session_state.is_locked = st.radio(
             "Input", ["Unlocked", "Locked"], index=0 if not locked else 1,
             horizontal=True, help="**Locked** disables score entry.",
             on_change=handle_lock_change
