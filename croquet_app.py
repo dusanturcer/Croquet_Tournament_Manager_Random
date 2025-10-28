@@ -419,48 +419,6 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# IN-TABLE SCORE INPUT (0-7) – REAL-TIME
-# --------------------------------------------------------------------------- #
-def number_input_in_table(key, min_value=0, max_value=7, disabled=False):
-    txt_key = f"{key}_txt"
-    val_key = f"{key}_val"
-    
-    if val_key not in st.session_state:
-        st.session_state[val_key] = 0
-    if txt_key not in st.session_state:
-        st.session_state[txt_key] = str(st.session_state[val_key])
-
-    def _sync():
-        raw = st.session_state[txt_key]
-        if raw == "":
-            st.session_state[val_key] = 0
-            return
-        try:
-            v = int(raw)
-            if v < min_value or v > max_value:
-                st.session_state[val_key] = max(min_value, min(max_value, v))
-                st.error(f"Score must be 0–7!")
-            else:
-                st.session_state[val_key] = v
-        except ValueError:
-            st.session_state[val_key] = 0
-            st.error("Enter 0–7")
-
-    st.markdown(f"""
-    <input type="text" 
-           value="{st.session_state[txt_key]}" 
-           maxlength="1" 
-           style="width:60px; text-align:center; font-size:1.3rem; font-weight:bold; height:36px; padding:0;"
-           oninput="this.value=this.value.replace(/[^0-7]/g,'')"
-           onchange="window.parent.streamlit.setComponentValue('{txt_key}', this.value)">
-    """, unsafe_allow_html=True)
-
-    # Use Streamlit's hidden input to trigger on_change
-    st.text_input("", key=txt_key, max_chars=1, label_visibility="collapsed", on_change=_sync)
-    
-    return int(st.session_state[val_key])
-
-# --------------------------------------------------------------------------- #
 # UI helpers
 # --------------------------------------------------------------------------- #
 def load_selected_tournament(tid):
@@ -493,7 +451,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + IN-TABLE INPUTS
+    # MOBILE-FRIENDLY HORIZONTAL TABLE
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -501,28 +459,19 @@ def main():
             padding-top: 4rem !important;
             padding-bottom: 0.8rem !important;
         }
+
+        /* FORM & INPUTS */
         div[data-testid="stForm"] {
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
+            padding: 0 !important;
             margin-top: 0 !important;
-        }
-        div[data-testid="stForm"] > div > div {
-            padding-top: 0 !important;
-        }
-        div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
-            font-size: 1rem !important;
         }
         div[data-testid="stForm"] div[data-testid="stTextInput"] input {
-            margin-top: 0.2rem !important;
             height: 2.8rem !important;
         }
 
-        /* TOURNAMENT NAME: FULL WIDTH */
+        /* TOURNAMENT NAME */
         div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
             width: 100% !important;
-            min-width: 100% !important;
             background-color: white !important;
             color: black !important;
         }
@@ -531,46 +480,85 @@ def main():
             color: white !important;
         }
 
-        /* TABLE: IN-TABLE INPUTS */
+        /* TABLE: FORCE HORIZONTAL ON MOBILE */
         .stMarkdown table {
+            display: table !important;
             width: 100% !important;
             border-collapse: collapse;
-            font-size: 1.1rem;
+            font-size: 1rem;
             margin-top: 0.5rem;
         }
+        .stMarkdown table thead {
+            display: table-header-group !important;
+        }
+        .stMarkdown table tbody {
+            display: table-row-group !important;
+        }
+        .stMarkdown table tr {
+            display: table-row !important;
+        }
         .stMarkdown table th, .stMarkdown table td {
-            padding: 6px 8px !important;
+            display: table-cell !important;
+            padding: 6px 4px !important;
             text-align: center;
             vertical-align: middle;
             border: 1px solid #ddd;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
         }
         .stMarkdown table th {
             background-color: #f5f5f5;
             font-weight: 600;
+            font-size: 0.9rem;
         }
-        .stMarkdown table td:nth-child(2), .stMarkdown table td:nth-child(5) {
-            text-align: left;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 180px;
+
+        /* COLUMN WIDTHS */
+        .stMarkdown table td:nth-child(1) { width: 40px; font-weight: 600; }
+        .stMarkdown table td:nth-child(2), .stMarkdown table td:nth-child(5) { 
+            max-width: 120px; 
+            text-align: left; 
+            font-size: 0.95rem;
         }
-        .stMarkdown table td:nth-child(3), .stMarkdown table td:nth-child(4) {
-            width: 60px;
-            padding: 0 !important;
+        .stMarkdown table td:nth-child(3), .stMarkdown table td:nth-child(4) { 
+            width: 50px; 
+            padding: 0 !important; 
         }
-        .stMarkdown table td:first-child {
-            width: 50px;
-            font-weight: 600;
-        }
+
+        /* IN-TABLE INPUTS */
         .stMarkdown table input {
             width: 100% !important;
             height: 100% !important;
             border: none !important;
             text-align: center;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             font-weight: bold;
             background: transparent;
+            padding: 0;
+        }
+
+        /* MOBILE: HORIZONTAL SCROLL */
+        @media (max-width: 768px) {
+            .stMarkdown {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+            .stMarkdown > div {
+                min-width: 600px !important;
+            }
+        }
+
+        .scroll-table {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin-bottom: 1rem;
+        }
+        .scroll-table table {
+            min-width: 600px;
+        }
+
+        .stExpander > div > div > div {
+            padding: 0.2rem !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -705,7 +693,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (IN-TABLE INPUTS) ---
+    # --- Render rounds (MOBILE-FRIENDLY HORIZONTAL TABLE) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -713,17 +701,13 @@ def main():
         complete = all(sum(m.get_scores()) > 0 for m in real_matches)
         label = f"Round {r+1} – {len(real_matches)} matches"
         with st.expander(label, expanded=not complete):
+            st.markdown('<div class="scroll-table">', unsafe_allow_html=True)
+
             table_html = """
             <table>
-                <thead>
-                    <tr>
-                        <th>Match</th>
-                        <th>P1</th>
-                        <th>S1</th>
-                        <th>S2</th>
-                        <th>P2</th>
-                    </tr>
-                </thead>
+                <thead><tr>
+                    <th>Match</th><th>P1</th><th>S1</th><th>S2</th><th>P2</th>
+                </tr></thead>
                 <tbody>
             """
             for idx, match in enumerate(real_matches):
@@ -742,20 +726,36 @@ def main():
                 p1_style = "color:green; font-weight:bold;" if live1 > live2 and live1 > 0 else ""
                 p2_style = "color:green; font-weight:bold;" if live2 > live1 and live2 > 0 else ""
 
-                # Use st.text_input inside table cell
-                col1, col2, col3, col4, col5 = st.columns([0.5, 1.8, 0.6, 0.6, 1.8])
-                with col1:
-                    st.write(f"**{idx+1}**")
-                with col2:
-                    st.markdown(f'<span style="{p1_style}">{match.player1.name}</span>', unsafe_allow_html=True)
-                with col3:
-                    st.text_input("", value=str(live1), key=f"{k1}_txt", max_chars=1, label_visibility="collapsed", disabled=locked)
-                with col4:
-                    st.text_input("", value=str(live2), key=f"{k2}_txt", max_chars=1, label_visibility="collapsed", disabled=locked)
-                with col5:
-                    st.markdown(f'<span style="{p2_style}">{match.player2.name}</span>', unsafe_allow_html=True)
+                table_html += f"""
+                <tr>
+                    <td><strong>{idx+1}</strong></td>
+                    <td><span style="{p1_style}">{match.player1.name}</span></td>
+                    <td><input type="text" value="{live1}" maxlength="1" 
+                              oninput="this.value=this.value.replace(/[^0-7]/g,'')"
+                              onchange="parent.streamlit.setComponentValue('{k1}_txt', this.value)"></td>
+                    <td><input type="text" value="{live2}" maxlength="1" 
+                              oninput="this.value=this.value.replace(/[^0-7]/g,'')"
+                              onchange="parent.streamlit.setComponentValue('{k2}_txt', this.value)"></td>
+                    <td><span style="{p2_style}">{match.player2.name}</span></td>
+                </tr>
+                """
 
-            st.markdown("</tbody></table>", unsafe_allow_html=True)
+                # Sync input to session state
+                def sync_input(key, val_key):
+                    raw = st.session_state.get(key, "")
+                    try:
+                        v = int(raw) if raw else 0
+                        if 0 <= v <= 7:
+                            st.session_state[val_key] = v
+                    except:
+                        st.session_state[val_key] = 0
+
+                st.text_input("", key=f"{k1}_txt", max_chars=1, label_visibility="collapsed", on_change=sync_input, args=(f"{k1}_txt", f"{k1}_val"))
+                st.text_input("", key=f"{k2}_txt", max_chars=1, label_visibility="collapsed", on_change=sync_input, args=(f"{k2}_txt", f"{k2}_val"))
+
+            table_html += "</tbody></table>"
+            st.markdown(table_html, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
         if complete:
             st.success(f"**Round {r+1} complete**")
