@@ -494,7 +494,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + FULL TOURNAMENT NAME + FIX FORM INPUTS
+    # TIGHT LAYOUT + FULL TOURNAMENT NAME + INLINE RESULT
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -520,7 +520,7 @@ def main():
             height: 2.8rem !important;
         }
 
-        /* TOURNAMENT NAME: FULL WIDTH, NO CUT-OFF */
+        /* TOURNAMENT NAME: FULL WIDTH */
         div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
             width: 100% !important;
             min-width: 100% !important;
@@ -548,6 +548,7 @@ def main():
             color: white !important;
         }
 
+        /* PLAYER NAME WITH RESULT – COMPACT */
         .player-name {
             display: flex;
             align-items: center;
@@ -558,19 +559,19 @@ def main():
             overflow: hidden;
             text-overflow: ellipsis;
             padding-left: 2px;
+            line-height: 1.2;
         }
-        .result-metric {
-            min-width: 90px !important;
-            text-align: center;
-            font-size: 1.0rem !important;
+        .player-name em {
+            color: #666;
+            font-style: italic;
+            font-weight: normal;
+            margin-left: 4px;
+            font-size: 0.9rem;
         }
-        .result-metric > div {
-            height: 3.0rem !important;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
+
+        /* HIDE OLD RESULT BOX */
+        .result-metric { display: none !important; }
+
         .stExpander > div > div > div {
             padding-top: 0.2rem !important;
             padding-bottom: 0.2rem !important;
@@ -660,7 +661,6 @@ def main():
     with st.expander("Create / Setup Tournament", expanded=expander_open):
         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
         with st.form("setup_form"):
-            # FULL WIDTH TOURNAMENT NAME
             st.session_state.tournament_name = st.text_input(
                 "Tournament name",
                 value=st.session_state.tournament_name,
@@ -735,22 +735,31 @@ def main():
                         continue
 
                     with cols[idx]:
-                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+                        n, p1, h1, h2, p2 = st.columns([0.3, 1.3, 0.6, 0.6, 1.3])
                         with n: st.write(f"**{i+idx+1}**")
-                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
-                        with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
-                        with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
-                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+                        
+                        live1 = number_input_simple(k1, label=" ", disabled=locked)
+                        live2 = number_input_simple(k2, label=" ", disabled=locked)
 
+                        # TIE VALIDATION
                         if live1 == live2 and live1 != 0:
                             st.error("Ties are not allowed!")
 
-                        with stat:
-                            if live1 == live2 == 0:
-                                st.write("–")
-                            else:
-                                winner = "P1" if live1 > live2 else "P2"
-                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
+                        # RESULT IN NAME
+                        p1_name = match.player1.name
+                        p2_name = match.player2.name
+                        if live1 > 0 or live2 > 0:
+                            if live1 > live2:
+                                p1_name = f"**{p1_name}** _(_{live1}–{live2} win_)_"
+                            elif live2 > live1:
+                                p2_name = f"**{p2_name}** _(_{live2}–{live1} win_)_"
+
+                        with p1: 
+                            st.markdown(f'<div class="player-name">{p1_name}</div>', unsafe_allow_html=True)
+                        with h1: st.write("")
+                        with h2: st.write("")
+                        with p2: 
+                            st.markdown(f'<div class="player-name">{p2_name}</div>', unsafe_allow_html=True)
 
         if complete:
             st.success(f"**Round {r+1} complete**")
