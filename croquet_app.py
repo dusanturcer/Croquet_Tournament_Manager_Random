@@ -227,7 +227,7 @@ class SwissTournament:
                     self.games_played[p1.id] += 1
                     self.games_played[best_p2.id] += 1
                     self.planned_games[p1.id] += 1
-                    self.planned_games[best_p2.id] += 1
+                    self.planned_games[p2.id] += 1
                     used.update([p1.id, best_p2.id])
                 else:
                     break
@@ -303,7 +303,7 @@ def save_to_db(tournament, tournament_name):
 
         c.executemany(
             "INSERT INTO players (tournament_id,player_id,name,points,wins,hoops_scored,hoops_conceded,planned_games,played_results) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            [(tid, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded,
+            [(tid, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoopes_conceded,
               tournament.planned_games.get(p.id, 0),
               tournament.games_played_with_result.get(p.id, 0)) for p in tournament.players]
         )
@@ -451,7 +451,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # MOBILE-FRIENDLY HORIZONTAL TABLE
+    # MOBILE-FRIENDLY NATIVE TABLE
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -480,81 +480,34 @@ def main():
             color: white !important;
         }
 
-        /* TABLE: FORCE HORIZONTAL ON MOBILE */
-        .stMarkdown table {
-            display: table !important;
-            width: 100% !important;
-            border-collapse: collapse;
-            font-size: 1rem;
-            margin-top: 0.5rem;
-        }
-        .stMarkdown table thead {
-            display: table-header-group !important;
-        }
-        .stMarkdown table tbody {
-            display: table-row-group !important;
-        }
-        .stMarkdown table tr {
-            display: table-row !important;
-        }
-        .stMarkdown table th, .stMarkdown table td {
-            display: table-cell !important;
-            padding: 6px 4px !important;
-            text-align: center;
-            vertical-align: middle;
-            border: 1px solid #ddd;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-        }
-        .stMarkdown table th {
-            background-color: #f5f5f5;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        /* COLUMN WIDTHS */
-        .stMarkdown table td:nth-child(1) { width: 40px; font-weight: 600; }
-        .stMarkdown table td:nth-child(2), .stMarkdown table td:nth-child(5) { 
-            max-width: 120px; 
-            text-align: left; 
-            font-size: 0.95rem;
-        }
-        .stMarkdown table td:nth-child(3), .stMarkdown table td:nth-child(4) { 
-            width: 50px; 
-            padding: 0 !important; 
-        }
-
         /* IN-TABLE INPUTS */
-        .stMarkdown table input {
-            width: 100% !important;
-            height: 100% !important;
-            border: none !important;
-            text-align: center;
-            font-size: 1.2rem;
-            font-weight: bold;
-            background: transparent;
-            padding: 0;
+        div[data-testid="stTextInput"] input {
+            font-size: 1.3rem !important;
+            font-weight: bold !important;
+            text-align: center !important;
+            padding: 0 4px !important;
+            height: 36px !important;
+            width: 50px !important;
+            max-width: 50px !important;
         }
 
         /* MOBILE: HORIZONTAL SCROLL */
-        @media (max-width: 768px) {
-            .stMarkdown {
-                overflow-x: auto !important;
-                -webkit-overflow-scrolling: touch !important;
-            }
-            .stMarkdown > div {
-                min-width: 600px !important;
-            }
-        }
-
         .scroll-table {
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            margin-bottom: 1rem;
+            margin: 0.5rem 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 0.5rem;
+            background: #fafafa;
         }
-        .scroll-table table {
+        .scroll-table > div {
             min-width: 600px;
+        }
+
+        /* COLUMNS IN TABLE */
+        .stColumns > div {
+            padding: 2px 4px !important;
         }
 
         .stExpander > div > div > div {
@@ -693,7 +646,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (MOBILE-FRIENDLY HORIZONTAL TABLE) ---
+    # --- Render rounds (NATIVE, MOBILE-FRIENDLY) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -703,13 +656,15 @@ def main():
         with st.expander(label, expanded=not complete):
             st.markdown('<div class="scroll-table">', unsafe_allow_html=True)
 
-            table_html = """
-            <table>
-                <thead><tr>
-                    <th>Match</th><th>P1</th><th>S1</th><th>S2</th><th>P2</th>
-                </tr></thead>
-                <tbody>
-            """
+            # Header
+            h1, h2, h3, h4, h5 = st.columns([0.5, 1.8, 0.6, 0.6, 1.8])
+            with h1: st.markdown("**Match**")
+            with h2: st.markdown("**P1**")
+            with h3: st.markdown("**S1**")
+            with h4: st.markdown("**S2**")
+            with h5: st.markdown("**P2**")
+            st.markdown("---")
+
             for idx, match in enumerate(real_matches):
                 try:
                     entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
@@ -721,40 +676,37 @@ def main():
                 live2 = int(st.session_state.get(f"{k2}_val", 0))
 
                 if live1 == live2 and live1 != 0:
-                    st.error(f"Match {idx+1}: Ties not allowed!")
+                    st.error(f"Match {idx+1}: Ties not allowed!", icon="Prohibited")
 
                 p1_style = "color:green; font-weight:bold;" if live1 > live2 and live1 > 0 else ""
                 p2_style = "color:green; font-weight:bold;" if live2 > live1 and live2 > 0 else ""
 
-                table_html += f"""
-                <tr>
-                    <td><strong>{idx+1}</strong></td>
-                    <td><span style="{p1_style}">{match.player1.name}</span></td>
-                    <td><input type="text" value="{live1}" maxlength="1" 
-                              oninput="this.value=this.value.replace(/[^0-7]/g,'')"
-                              onchange="parent.streamlit.setComponentValue('{k1}_txt', this.value)"></td>
-                    <td><input type="text" value="{live2}" maxlength="1" 
-                              oninput="this.value=this.value.replace(/[^0-7]/g,'')"
-                              onchange="parent.streamlit.setComponentValue('{k2}_txt', this.value)"></td>
-                    <td><span style="{p2_style}">{match.player2.name}</span></td>
-                </tr>
-                """
+                def make_sync(val_key):
+                    def sync():
+                        raw = st.session_state.get(f"{val_key}_txt", "")
+                        try:
+                            v = int(raw) if raw else 0
+                            if 0 <= v <= 7:
+                                st.session_state[val_key] = v
+                            else:
+                                st.session_state[val_key] = 0
+                        except:
+                            st.session_state[val_key] = 0
+                    return sync
 
-                # Sync input to session state
-                def sync_input(key, val_key):
-                    raw = st.session_state.get(key, "")
-                    try:
-                        v = int(raw) if raw else 0
-                        if 0 <= v <= 7:
-                            st.session_state[val_key] = v
-                    except:
-                        st.session_state[val_key] = 0
+                c1, c2, c3, c4, c5 = st.columns([0.5, 1.8, 0.6, 0.6, 1.8])
+                with c1: st.markdown(f"**{idx+1}**")
+                with c2: st.markdown(f'<span style="{p1_style}">{match.player1.name}</span>', unsafe_allow_html=True)
+                with c3:
+                    st.text_input("", value=str(live1), key=f"{k1}_txt", max_chars=1,
+                                  label_visibility="collapsed", disabled=locked,
+                                  on_change=make_sync(f"{k1}_val"))
+                with c4:
+                    st.text_input("", value=str(live2), key=f"{k2}_txt", max_chars=1,
+                                  label_visibility="collapsed", disabled=locked,
+                                  on_change=make_sync(f"{k2}_val"))
+                with c5: st.markdown(f'<span style="{p2_style}">{match.player2.name}</span>', unsafe_allow_html=True)
 
-                st.text_input("", key=f"{k1}_txt", max_chars=1, label_visibility="collapsed", on_change=sync_input, args=(f"{k1}_txt", f"{k1}_val"))
-                st.text_input("", key=f"{k2}_txt", max_chars=1, label_visibility="collapsed", on_change=sync_input, args=(f"{k2}_txt", f"{k2}_val"))
-
-            table_html += "</tbody></table>"
-            st.markdown(table_html, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         if complete:
