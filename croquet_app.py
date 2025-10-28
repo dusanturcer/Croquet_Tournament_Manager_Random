@@ -443,10 +443,14 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
     txt = f"{key}_txt"
     val = f"{key}_val"
     
+    # -----------------------------------------------------------------
+    #  NEW: 0 → empty string in the text box
+    # -----------------------------------------------------------------
     if val not in st.session_state:
-        st.session_state[val] = 0
+        st.session_state[val] = 0                     # internal numeric value
     if txt not in st.session_state:
-        st.session_state[txt] = str(st.session_state[val])
+        # show "" when the numeric value is 0, otherwise the number
+        st.session_state[txt] = "" if st.session_state[val] == 0 else str(st.session_state[val])
 
     st.text_input(
         label,
@@ -459,6 +463,7 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
         label_visibility="collapsed"
     )
     
+    # return the *numeric* value (0 when the box is empty)
     return int(st.session_state[val])
 
 # --------------------------------------------------------------------------- #
@@ -718,7 +723,7 @@ def main():
     tournament = st.session_state.tournament
     st.header(f"**{st.session_state.tournament_name}**")
 
-    # --- Score keys (still generated once, right after the tournament exists) ---
+    # --- Score keys -------------------------------------------------
     score_keys = []
     for r in range(tournament.num_rounds):
         for m, match in enumerate(tournament.get_round_pairings(r)):
@@ -726,10 +731,15 @@ def main():
                 k1 = f"hoops1_r{r}_m{m}"
                 k2 = f"hoops2_r{r}_m{m}"
                 v1, v2 = match.get_scores()
-                if f"{k1}_val" not in st.session_state:
-                    st.session_state[f"{k1}_val"] = v1
-                if f"{k2}_val" not in st.session_state:
-                    st.session_state[f"{k2}_val"] = v2
+
+                # ---- ONLY set defaults when we are *loading* an existing tournament ----
+                if st.session_state.loaded_id:                     # ← loaded from DB
+                    if f"{k1}_val" not in st.session_state:
+                        st.session_state[f"{k1}_val"] = v1
+                    if f"{k2}_val" not in st.session_state:
+                        st.session_state[f"{k2}_val"] = v2
+                # (new tournaments get no default → fields stay empty)
+
                 score_keys.append((r, m, k1, k2))
 
     # ------------------------------------------------------------------- #
