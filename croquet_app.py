@@ -490,7 +490,7 @@ def main():
     # --------------------------------------------------------------- #
     # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER                 #
     # --------------------------------------------------------------- #
-        st.markdown("""
+    st.markdown("""
     <style>
         /* 1. PUSH MAIN PAGE DOWN – KEEP STREAMLIT HEADER VISIBLE */
         .block-container {
