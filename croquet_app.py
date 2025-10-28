@@ -441,16 +441,12 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
     txt = f"{key}_txt"
     val = f"{key}_val"
     
-    # --- Ensure numeric value exists (0 = no result yet) ---
     if val not in st.session_state:
         st.session_state[val] = 0
 
-    # --- TEXT BOX: show "" ONLY if value is 0 AND we are in a *new* tournament ---
-    #     (loaded tournaments should show 0 if it was saved)
     show_blank = (st.session_state[val] == 0 and not st.session_state.get("loaded_id"))
     if txt not in st.session_state:
         st.session_state[txt] = "" if show_blank else str(st.session_state[val])
-    # Update in real-time if user types
     elif st.session_state[val] != 0 and st.session_state[txt] == "":
         st.session_state[txt] = str(st.session_state[val])
 
@@ -677,6 +673,25 @@ def main():
                 else:
                     st.error("Delete failed")
 
+    # --- Ensure score_keys exists only once ---
+        if "score_keys" not in st.session_state:
+            st.session_state.score_keys = []
+            for r in range(tournament.num_rounds):
+                pairings = tournament.get_round_pairings(r)
+                for m, match in enumerate(pairings):
+                    if match and match.player2:
+                        k1 = f"hoops1_r{r}_m{m}"
+                        k2 = f"hoops2_r{r}_m{m}"
+                        v1, v2 = match.get_scores()
+
+                        # Initialize session state only if missing
+                        if f"{k1}_val" not in st.session_state:
+                            st.session_state[f"{k1}_val"] = v1
+                        if f"{k2}_val" not in st.session_state:
+                            st.session_state[f"{k2}_val"] = v2
+
+                        st.session_state.score_keys.append((r, m, k1, k2))
+
     # --- Create tournament ---
     expander_open = not bool(st.session_state.tournament)
     with st.expander("Create / Setup Tournament", expanded=expander_open):
@@ -724,24 +739,6 @@ def main():
     tournament = st.session_state.tournament
     st.header(f"**{st.session_state.tournament_name}**")
 
-    # --- Score keys ---
-    score_keys = []
-    for r in range(tournament.num_rounds):
-        pairings = tournament.get_round_pairings(r)
-        for m, match in enumerate(pairings):
-            if match and match.player2:
-                k1 = f"hoops1_r{r}_m{m}"
-                k2 = f"hoops2_r{r}_m{m}"
-
-                # --- CRITICAL: Only set default if NOT already in session ---
-                if f"{k1}_val" not in st.session_state:
-                    v1, v2 = match.get_scores()
-                    st.session_state[f"{k1}_val"] = v1
-                    st.session_state[f"{k2}_val"] = v2
-                # --- Otherwise: KEEP whatever user typed (even if match.result is old) ---
-
-                score_keys.append((r, m, k1, k2))
-
     # --- Render rounds (2 per row) ---
     st.subheader("Rounds")
 
@@ -758,10 +755,16 @@ def main():
                 cols = st.columns(2)
 
                 for idx, match in enumerate(batch):
-                    entry = next((e for e in score_keys if e[0] == r and e[1] == pairings.index(match)), None)
+                    # Find key from session_state (already built once)
+                    entry = next((e for e in st.session_state.score_keys 
+                                if e[0] == r and e[1] == pairings.index(match)), None)
                     if not entry:
                         continue
                     _, _, k1, k2 = entry
+
+                    # Read CURRENT values from session (user input)
+                    live1 = int(st.session_state.get(f"{k1}_val", 0))
+                    live2 = int(st.session_state.get(f"{k2}_val", 0))
 
                     with cols[idx]:
                         n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
@@ -770,19 +773,15 @@ def main():
                         with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
 
                         with h1:
-                            live1 = number_input_simple(k1, label=" ", disabled=locked)
-                            # Sync to tournament
-                            current1, _ = match.get_scores()
-                            if live1 != current1:
-                                live2 = st.session_state.get(f"{k2}_val", 0)
-                                tournament.record_result(r, pairings.index(match), live1, live2)
+                            new1 = number_input_simple(k1, label=" ", disabled=locked)
+                            if new1 != live1:
+                                # Sync to tournament
+                                tournament.record_result(r, pairings.index(match), new1, live2)
 
                         with h2:
-                            live2 = number_input_simple(k2, label=" ", disabled=locked)
-                            _, current2 = match.get_scores()
-                            if live2 != current2:
-                                live1 = st.session_state.get(f"{k1}_val", 0)
-                                tournament.record_result(r, pairings.index(match), live1, live2)
+                            new2 = number_input_simple(k2, label=" ", disabled=locked)
+                            if new2 != live2:
+                                tournament.record_result(r, pairings.index(match), live1, new2)
 
                         with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
@@ -794,7 +793,10 @@ def main():
                                 st.write("–")
                             else:
                                 winner = "P1" if live1 > live2 else "P2"
-                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
+                                st.markdown(
+                                    f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
+                                    unsafe_allow_html=True
+                                )
 
                     match_no += 1
 
