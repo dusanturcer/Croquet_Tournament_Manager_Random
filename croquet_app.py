@@ -490,15 +490,36 @@ def main():
     # --------------------------------------------------------------- #
     # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER                 #
     # --------------------------------------------------------------- #
-    st.markdown("""
+        st.markdown("""
     <style>
-        /* PUSH PAGE DOWN – SHOW FULL STREAMLIT HEADER */
+        /* 1. PUSH MAIN PAGE DOWN – KEEP STREAMLIT HEADER VISIBLE */
         .block-container {
             padding-top: 4rem !important;
             padding-bottom: 0.8rem !important;
         }
 
-        /* 1. SCORE INPUTS – 160px wide, big font */
+        /* 2. COMPLETELY REMOVE FORM PADDING – FIX CUT-OFF */
+        div[data-testid="stForm"] {
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            margin-top: 0 !important;
+        }
+        div[data-testid="stForm"] > div > div {
+            padding-top: 0 !important;
+        }
+
+        /* 3. FIX TEXT INPUT LABELS & FIELDS INSIDE FORMS */
+        div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            font-size: 1rem !important;
+        }
+        div[data-testid="stForm"] div[data-testid="stTextInput"] input {
+            margin-top: 0.2rem !important;
+            height: 2.8rem !important;
+        }
+
+        /* 4. SCORE INPUTS – 160px WIDE, BIG FONT */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
             padding: 10px !important;
@@ -514,17 +535,7 @@ def main():
             color: white !important;
         }
 
-        /* FIX: TOURNAMENT NAME INPUT – FULLY VISIBLE, NO CUT-OFF */
-        div[data-testid="stForm"] div[data-testid="stTextInput"] > label,
-        div[data-testid="stForm"] div[data-testid="stTextInput"] input {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
-        }
-        div[data-testid="stForm"] {
-            padding-top: 0 !important;
-        }
-
-        /* 2. PLAYER NAMES – aligned, no overflow */
+        /* 5. PLAYER NAMES */
         .player-name {
             display: flex;
             align-items: center;
@@ -537,7 +548,7 @@ def main():
             padding-left: 2px;
         }
 
-        /* 3. RESULT – compact */
+        /* 6. RESULT */
         .result-metric {
             min-width: 90px !important;
             text-align: center;
@@ -551,7 +562,7 @@ def main():
             align-items: center;
         }
 
-        /* 4. REMOVE ALL UNWANTED GAPS */
+        /* 7. REMOVE GAPS */
         .stExpander > div > div > div {
             padding-top: 0.2rem !important;
             padding-bottom: 0.2rem !important;
@@ -639,12 +650,13 @@ def main():
     # --- Create tournament ---
     expander_open = not bool(st.session_state.tournament)
     with st.expander("Create / Setup Tournament", expanded=expander_open):
+        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)  # ← ADD SPACE ABOVE FORM
         with st.form("setup_form"):
             st.session_state.tournament_name = st.text_input(
                 "Tournament name", value=st.session_state.tournament_name, disabled=locked
             )
             players_txt = st.text_area(
-                "Players (one per line)", "\n".join(st.session_state.players), disabled=locked
+                "Players (one per line)", "\n".join(st.session_state.players), height=200, disabled=locked
             )
             st.session_state.num_rounds = st.number_input(
                 "Rounds", 1, 15, st.session_state.num_rounds, disabled=locked
