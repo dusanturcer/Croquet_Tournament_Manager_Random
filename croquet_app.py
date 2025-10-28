@@ -582,6 +582,15 @@ def main():
         .stColumns > div > div {
             margin: 0 !important;
         }
+        /* Make all Streamlit buttons green */
+        div.stButton > button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+        }
+        div.stButton > button:hover {
+            background-color: #218838;
+        }
     </style>
     """, unsafe_allow_html=True)
 
