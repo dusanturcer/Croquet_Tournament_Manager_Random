@@ -742,7 +742,7 @@ def main():
         with st.expander(label, expanded=not complete):
             for i in range(0, len(real_matches), 4):
                 batch = real_matches[i:i+4]
-                cols = st.columns(4)
+                cols = st.columns(1)
                 for idx, match in enumerate(batch):
                     try:
                         entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
