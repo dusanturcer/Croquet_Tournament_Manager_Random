@@ -733,53 +733,48 @@ def main():
                 score_keys.append((r, m, k1, k2))
 
 # --- Render rounds (one line per match) ---
-st.subheader("Rounds")
-for r in range(tournament.num_rounds):
-    pairings = tournament.get_round_pairings(r)
-    real_matches = [m for m in pairings if m and m.player2]
-    complete = all(sum(m.get_scores()) > 0 for m in real_matches)
-    label = f"Round {r+1} – {len(real_matches)} matches"
-    with st.expander(label, expanded=not complete):
-        # Header row
-        cols_header = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
-        headers = ["#", "Player 1", "H1", "H2", "Player 2", "Result"]
-        for col, h in zip(cols_header, headers):
-            col.markdown(f"**{h}**")
+if st.session_state.tournament:
+    tournament = st.session_state.tournament
+    st.subheader("Rounds")
+    for r in range(tournament.num_rounds):
+        pairings = tournament.get_round_pairings(r)
+        real_matches = [m for m in pairings if m and m.player2]
+        complete = all(sum(m.get_scores()) > 0 for m in real_matches)
+        label = f"Round {r+1} – {len(real_matches)} matches"
+        with st.expander(label, expanded=not complete):
+            # Header row
+            cols_header = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+            headers = ["#", "Player 1", "H1", "H2", "Player 2", "Result"]
+            for col, h in zip(cols_header, headers):
+                col.markdown(f"**{h}**")
 
-        # Each match on one row
-        for idx, match in enumerate(real_matches):
-            # Get or create session state keys
-            k1 = f"hoops1_r{r}_m{idx}"
-            k2 = f"hoops2_r{r}_m{idx}"
-            if f"{k1}_val" not in st.session_state:
-                st.session_state[f"{k1}_val"] = match.get_scores()[0]
-            if f"{k2}_val" not in st.session_state:
-                st.session_state[f"{k2}_val"] = match.get_scores()[1]
+            # Each match on one row
+            for idx, match in enumerate(real_matches):
+                k1 = f"hoops1_r{r}_m{idx}"
+                k2 = f"hoops2_r{r}_m{idx}"
+                if f"{k1}_val" not in st.session_state:
+                    st.session_state[f"{k1}_val"] = match.get_scores()[0]
+                if f"{k2}_val" not in st.session_state:
+                    st.session_state[f"{k2}_val"] = match.get_scores()[1]
 
-            # Columns for the match
-            cols = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
-            with cols[0]:
-                st.write(f"{idx+1}")
-            with cols[1]:
-                st.markdown(f'<div class="player-name">{match.player1.name}</div>', unsafe_allow_html=True)
-            with cols[2]:
-                live1 = number_input_simple(k1, label=" ", disabled=locked)
-            with cols[3]:
-                live2 = number_input_simple(k2, label=" ", disabled=locked)
-            with cols[4]:
-                st.markdown(f'<div class="player-name">{match.player2.name}</div>', unsafe_allow_html=True)
-            with cols[5]:
-                if live1 == live2 == 0:
-                    st.write("–")
-                else:
-                    winner = "P1" if live1 > live2 else "P2"
-                    st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
+                cols = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+                with cols[0]: st.write(f"{idx+1}")
+                with cols[1]: st.markdown(f'<div class="player-name">{match.player1.name}</div>', unsafe_allow_html=True)
+                with cols[2]: live1 = number_input_simple(k1, label=" ", disabled=locked)
+                with cols[3]: live2 = number_input_simple(k2, label=" ", disabled=locked)
+                with cols[4]: st.markdown(f'<div class="player-name">{match.player2.name}</div>', unsafe_allow_html=True)
+                with cols[5]:
+                    if live1 == live2 == 0:
+                        st.write("–")
+                    else:
+                        winner = "P1" if live1 > live2 else "P2"
+                        st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
 
-            # Update tournament object
-            tournament.record_result(r, idx, live1, live2)
+                tournament.record_result(r, idx, live1, live2)
 
-    if complete:
-        st.success(f"**Round {r+1} complete**")
+        if complete:
+            st.success(f"**Round {r+1} complete**")
+            
     # --- Recalculate ---
     st.markdown("---")
     with st.container():
