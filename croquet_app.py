@@ -718,7 +718,7 @@ def main():
     tournament = st.session_state.tournament
     st.header(f"**{st.session_state.tournament_name}**")
 
-    # --- Score keys ---
+    # --- Score keys (still generated once, right after the tournament exists) ---
     score_keys = []
     for r in range(tournament.num_rounds):
         for m, match in enumerate(tournament.get_round_pairings(r)):
@@ -732,44 +732,64 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-# --- Render rounds (2 per row) ---
-st.subheader("Rounds")
-for r in range(tournament.num_rounds):
-    pairings = tournament.get_round_pairings(r)
-    real_matches = [m for m in pairings if m and m.player2]
-    complete = all(sum(m.get_scores()) > 0 for m in real_matches)
-    label = f"Round {r+1} – {len(real_matches)} matches"
-    with st.expander(label, expanded=not complete):
-        for i in range(0, len(real_matches), 2):  # Step by 2
-            batch = real_matches[i:i+2]            # Only 2 matches
-            cols = st.columns(2)                   # 2 columns instead of 4
-            for idx, match in enumerate(batch):
-                try:
-                    entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
+    # ------------------------------------------------------------------- #
+    # RENDER ROUNDS – **maximum 2 matches per row**
+    # ------------------------------------------------------------------- #
+    st.subheader("Rounds")
+
+    # keep a running counter for the match number across the whole round
+    for r in range(tournament.num_rounds):
+        pairings      = tournament.get_round_pairings(r)
+        real_matches  = [m for m in pairings if m and m.player2]
+        complete      = all(sum(m.get_scores()) > 0 for m in real_matches)
+        label         = f"Round {r+1} – {len(real_matches)} matches"
+
+        with st.expander(label, expanded=not complete):
+            match_no = 1                                   # ← sequential number
+            for i in range(0, len(real_matches), 2):       # 2-match batches
+                batch = real_matches[i:i+2]
+                cols  = st.columns(2)                     # ← only 2 columns
+
+                for idx, match in enumerate(batch):
+                    # ----- find the score keys for this exact match -----
+                    entry = next(
+                        (e for e in score_keys if e[0] == r and e[1] == pairings.index(match)),
+                        None
+                    )
+                    if not entry:
+                        continue
                     _, _, k1, k2 = entry
-                except StopIteration:
-                    continue
 
-                with cols[idx]:
-                    n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
-                    with n: st.write(f"**{i+idx+1}**")
-                    with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
-                    with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
-                    with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
-                    with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+                    with cols[idx]:
+                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
 
-                    if live1 == live2 and live1 != 0:
-                        st.error("Ties are not allowed!")
+                        with n:   st.write(f"**{match_no}**")
+                        with p1:  st.markdown(
+                            f'<div class="player-name"><strong>{match.player1.name}</strong></div>',
+                            unsafe_allow_html=True)
+                        with h1:  live1 = number_input_simple(k1, label=" ", disabled=locked)
+                        with h2:  live2 = number_input_simple(k2, label=" ", disabled=locked)
+                        with p2:  st.markdown(
+                            f'<div class="player-name"><strong>{match.player2.name}</strong></div>',
+                            unsafe_allow_html=True)
 
-                    with stat:
-                        if live1 == live2 == 0:
-                            st.write("–")
-                        else:
-                            winner = "P1" if live1 > live2 else "P2"
-                            st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
+                        if live1 == live2 and live1 != 0:
+                            st.error("Ties are not allowed!")
 
-    if complete:
-        st.success(f"**Round {r+1} complete**")
+                        with stat:
+                            if live1 == live2 == 0:
+                                st.write("–")
+                            else:
+                                winner = "P1" if live1 > live2 else "P2"
+                                st.markdown(
+                                    f'<div class="result-metric"><strong>{live1}–{live2}</strong>'
+                                    f'<br><small>{winner}</small></div>',
+                                    unsafe_allow_html=True)
+
+                    match_no += 1                     # ← next match in the round
+
+        if complete:
+            st.success(f"**Round {r+1} complete**")
 
     # --- Recalculate ---
     st.markdown("---")
