@@ -225,9 +225,9 @@ class SwissTournament:
                     self.opponents[p1.id].add(best_p2.id)
                     self.opponents[best_p2.id].add(p1.id)
                     self.games_played[p1.id] += 1
-                    self.games_played[p2.id] += 1
+                    self.games_played[best_p2.id] += 1 # FIXED
                     self.planned_games[p1.id] += 1
-                    self.planned_games[p2.id] += 1
+                    self.planned_games[best_p2.id] += 1 # FIXED
                     used.update([p1.id, best_p2.id])
                 else:
                     break
