@@ -225,9 +225,9 @@ class SwissTournament:
                     self.opponents[p1.id].add(best_p2.id)
                     self.opponents[best_p2.id].add(p1.id)
                     self.games_played[p1.id] += 1
-                    self.games_played[best_p2.id] += 1 # FIXED
+                    self.games_played[best_p2.id] += 1
                     self.planned_games[p1.id] += 1
-                    self.planned_games[best_p2.id] += 1 # FIXED
+                    self.planned_games[best_p2.id] += 1
                     used.update([p1.id, best_p2.id])
                 else:
                     break
@@ -419,7 +419,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Single-digit input (0-9) – 160px wide
+# Single-digit input (0-7) – 160px wide
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -434,7 +434,7 @@ def _sync_text_to_int(text_key, int_key, mn, mx):
     except ValueError:
         st.session_state[int_key] = 0
 
-def number_input_simple(key, min_value=0, max_value=9, label=" ", disabled=False):
+def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False):
     txt = f"{key}_txt"
     val = f"{key}_val"
     
@@ -448,7 +448,7 @@ def number_input_simple(key, min_value=0, max_value=9, label=" ", disabled=False
         key=txt,
         max_chars=1,
         disabled=disabled,
-        help="0-9",
+        help="0-7",
         on_change=_sync_text_to_int,
         args=(txt, val, min_value, max_value),
         label_visibility="collapsed"
@@ -488,17 +488,14 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER                 #
+    # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        /* 1. PUSH MAIN PAGE DOWN – KEEP STREAMLIT HEADER VISIBLE */
         .block-container {
             padding-top: 4rem !important;
             padding-bottom: 0.8rem !important;
         }
-
-        /* 2. COMPLETELY REMOVE FORM PADDING – FIX CUT-OFF */
         div[data-testid="stForm"] {
             padding-top: 0 !important;
             padding-bottom: 0 !important;
@@ -507,8 +504,6 @@ def main():
         div[data-testid="stForm"] > div > div {
             padding-top: 0 !important;
         }
-
-        /* 3. FIX TEXT INPUT LABELS & FIELDS INSIDE FORMS */
         div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
             margin-top: 0 !important;
             padding-top: 0 !important;
@@ -518,8 +513,6 @@ def main():
             margin-top: 0.2rem !important;
             height: 2.8rem !important;
         }
-
-        /* 4. SCORE INPUTS – 160px WIDE, BIG FONT */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
             padding: 10px !important;
@@ -534,8 +527,6 @@ def main():
             background-color: #333 !important;
             color: white !important;
         }
-
-        /* 5. PLAYER NAMES */
         .player-name {
             display: flex;
             align-items: center;
@@ -547,8 +538,6 @@ def main():
             text-overflow: ellipsis;
             padding-left: 2px;
         }
-
-        /* 6. RESULT */
         .result-metric {
             min-width: 90px !important;
             text-align: center;
@@ -561,8 +550,6 @@ def main():
             justify-content: center;
             align-items: center;
         }
-
-        /* 7. REMOVE GAPS */
         .stExpander > div > div > div {
             padding-top: 0.2rem !important;
             padding-bottom: 0.2rem !important;
@@ -650,7 +637,7 @@ def main():
     # --- Create tournament ---
     expander_open = not bool(st.session_state.tournament)
     with st.expander("Create / Setup Tournament", expanded=expander_open):
-        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)  # ← ADD SPACE ABOVE FORM
+        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
         with st.form("setup_form"):
             st.session_state.tournament_name = st.text_input(
                 "Tournament name", value=st.session_state.tournament_name, disabled=locked
@@ -704,7 +691,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (4 per row, tight layout) ---
+    # --- Render rounds (4 per row) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -724,17 +711,30 @@ def main():
 
                     with cols[idx]:
                         n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
-                        with n:  st.write(f"**{i+idx+1}**")
+                        with n: st.write(f"**{i+idx+1}**")
                         with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
                         with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
                         with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
                         with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+
+                        # NEW VALIDATION LOGIC
+                        error = False
+                        if live1 == live2 and live1 != 0:
+                            st.error("Ties are not allowed!")
+                            error = True
+                        if live1 > 7 or live2 > 7:
+                            st.error("Score must be ≤ 7!")
+                            error = True
+
                         with stat:
-                            if live1 == live2 == 0:
+                            if error:
+                                st.write("INVALID")
+                            elif live1 == live2 == 0:
                                 st.write("–")
                             else:
-                                winner = "P1" if live1 > live2 else "P2" if live2 > live1 else "Draw"
+                                winner = "P1" if live1 > live2 else "P2"
                                 st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
+
         if complete:
             st.success(f"**Round {r+1} complete**")
 
