@@ -63,6 +63,7 @@ def init_schema(conn):
                 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
             );
         """)
+        # Ensure columns exist
         cur.execute("""
             ALTER TABLE players 
             ADD COLUMN IF NOT EXISTS planned_games INTEGER DEFAULT 0,
@@ -141,6 +142,7 @@ class SwissTournament:
         self.planned_games = {p.id: 0 for p in self.players}
         self.games_played_with_result = {p.id: 0 for p in self.players}
 
+        # Generate all rounds immediately
         self._generate_all_rounds()
 
     def _get_next_bye_player(self, used):
@@ -225,9 +227,9 @@ class SwissTournament:
                     self.opponents[p1.id].add(best_p2.id)
                     self.opponents[best_p2.id].add(p1.id)
                     self.games_played[p1.id] += 1
-                    self.games_played[p2.id] += 1
+                    self.games_played[best_p2.id] += 1
                     self.planned_games[p1.id] += 1
-                    self.planned_games[p2.id] += 1
+                    self.planned_games[best_p2.id] += 1
                     used.update([p1.id, best_p2.id])
                 else:
                     break
@@ -246,11 +248,13 @@ class SwissTournament:
         match = self.rounds[round_num][match_num]
         old1, old2 = match.get_scores()
 
+        # Decrement old result count
         if match.result and match.player2:
             if old1 > 0 or old2 > 0:
                 self.games_played_with_result[match.player1.id] -= 1
                 self.games_played_with_result[match.player2.id] -= 1
 
+        # Reset stats
         if match.result and match.player2:
             match.player1.hoops_scored   -= old1
             match.player1.hoops_conceded -= old2
@@ -265,6 +269,7 @@ class SwissTournament:
 
         match.set_result(hoops1, hoops2)
 
+        # Increment new result count
         if match.player2 and (hoops1 > 0 or hoops2 > 0):
             self.games_played_with_result[match.player1.id] += 1
             self.games_played_with_result[match.player2.id] += 1
@@ -377,6 +382,7 @@ def load_tournament_data(tournament_id):
         if not tname: return None, None, None
         tname = tname[0]
 
+        # FIXED: Correct column name
         c.execute("SELECT player_id, name, points, wins, hoops_scored, hoops_conceded, planned_games, played_results FROM players WHERE tournament_id=%s ORDER BY player_id", (tournament_id,))
         player_rows = c.fetchall()
         player_map = {}
@@ -419,7 +425,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Single-digit input (0-9) – wide
+# Mobile-friendly number input
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -434,7 +440,7 @@ def _sync_text_to_int(text_key, int_key, mn, mx):
     except ValueError:
         st.session_state[int_key] = 0
 
-def number_input_simple(key, min_value=0, max_value=9, label=" ", disabled=False):
+def number_input_simple(key, min_value=0, max_value=26, label=" ", disabled=False):
     txt = f"{key}_txt"
     val = f"{key}_val"
     
@@ -443,15 +449,30 @@ def number_input_simple(key, min_value=0, max_value=9, label=" ", disabled=False
     if txt not in st.session_state:
         st.session_state[txt] = ""
 
+    st.markdown("""
+    <style>
+        div[data-testid="stTextInput"] input {
+            font-size: 1.1rem !important;
+            padding: 8px !important;
+            text-align: center;
+            background-color: white !important;
+            color: black !important;
+        }
+        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input {
+            background-color: #333 !important;
+            color: white !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.text_input(
         label,
         key=txt,
-        max_chars=1,
+        max_chars=2,
         disabled=disabled,
-        help="0-9",
+        help="0-26",
         on_change=_sync_text_to_int,
-        args=(txt, val, min_value, max_value),
-        label_visibility="collapsed"
+        args=(txt, val, min_value, max_value)
     )
     return int(st.session_state[val])
 
@@ -486,79 +507,6 @@ def handle_lock_change():
 def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     logger.info("App start")
-
-    # --------------------------------------------------------------- #
-    # WIDE SCORE FIELDS + SPACING + CLEAN RESULT ICON               #
-    # --------------------------------------------------------------- #
-    st.markdown("""
-    <style>
-        /* 1. WIDE SCORE INPUTS – 180px */
-        div[data-testid="stTextInput"] input {
-            font-size: 1.8rem !important;
-            padding: 12px !important;
-            height: 3.2rem !important;
-            text-align: center;
-            min-width: 180px !important;
-            width: 180px !important;
-            background-color: white !important;
-            color: black !important;
-        }
-        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input {
-            background-color: #333 !important;
-            color: white !important;
-        }
-
-        /* 2. PLAYER NAMES – aligned */
-        .player-name {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            height: 3.2rem;
-            font-size: 1.1rem;
-            font-weight: 600;
-            padding-left: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        /* 3. HORIZONTAL SPACING BETWEEN SCORE FIELDS */
-        .score-gap > div {
-            padding-left: 12px !important;
-            padding-right: 12px !important;
-        }
-
-        /* 4. RESULT METRIC – more breathing room */
-        .result-metric {
-            min-width: 110px !important;
-            text-align: center;
-        }
-        .result-metric > div {
-            height: 3.2rem !important;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem !important;
-        }
-
-        /* 5. TIGHT BUT NOT CRUSHED LAYOUT */
-        .stExpander > div > div > div {
-            padding-top: 0.4rem !important;
-            padding-bottom: 0.4rem !important;
-        }
-        .stColumns > div {
-            padding-left: 0.3rem !important;
-            padding-right: 0.3rem !important;
-        }
-        .stColumns > div > div {
-            margin: 0 !important;
-        }
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
 
     # --- Ensure DB schema ---
     try:
@@ -686,7 +634,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (4 per row, wide fields, spacing) ---
+    # --- Render rounds ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -694,35 +642,30 @@ def main():
         complete = all(sum(m.get_scores()) > 0 for m in real_matches)
         label = f"Round {r+1} – {len(real_matches)} matches"
         with st.expander(label, expanded=not complete):
-            for i in range(0, len(real_matches), 4):
-                batch = real_matches[i:i+4]
-                cols = st.columns(4)
-                for idx, match in enumerate(batch):
-                    try:
-                        entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
-                        _, _, k1, k2 = entry
-                    except StopIteration:
-                        continue
+            cols = st.columns(2)
+            display_idx = 1
+            for match in real_matches:
+                try:
+                    entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
+                    _, _, k1, k2 = entry
+                except StopIteration:
+                    continue
 
-                    with cols[idx]:
-                        # Add spacing container
-                        with st.container():
-                            st.markdown('<div class="score-gap">', unsafe_allow_html=True)
-                            n, p1, h1, h2, p2, stat = st.columns([0.3, 1.4, 0.7, 0.7, 1.4, 1.0])
-                            st.markdown('</div>', unsafe_allow_html=True)
-
-                        with n: st.write(f"**{i+idx+1}**")
-                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
-                        with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
-                        with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
-                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
-                        with stat:
-                            if live1 == live2 == 0:
-                                st.write("–")
-                            else:
-                                winner = "P1" if live1 > live2 else "P2" if live2 > live1 else "Draw"
-                                delta_icon = "Win" if live1 > live2 else "Win" if live2 > live1 else "Draw"
-                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{delta_icon}</small></div>', unsafe_allow_html=True)
+                col = cols[0] if display_idx % 2 else cols[1]
+                with col:
+                    n, p1, h1, h2, p2, stat = st.columns([0.4, 1.8, 0.8, 0.8, 1.8, 1.2])
+                    with n: st.write(f"**{display_idx}**")
+                    with p1: st.write(f"**{match.player1.name}**")
+                    with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
+                    with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
+                    with p2: st.write(f"**{match.player2.name}**")
+                    with stat:
+                        if live1 == live2 == 0:
+                            st.write("–")
+                        else:
+                            winner = "P1" if live1 > live2 else "P2" if live2 > live1 else "Draw"
+                            st.metric("", f"{live1}–{live2}", delta=winner)
+                display_idx += 1
         if complete:
             st.success(f"**Round {r+1} complete**")
 
