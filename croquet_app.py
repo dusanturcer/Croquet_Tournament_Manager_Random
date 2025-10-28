@@ -419,47 +419,46 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Single-digit input (0-7) – REAL-TIME VALIDATION + ERROR
+# IN-TABLE SCORE INPUT (0-7) – REAL-TIME
 # --------------------------------------------------------------------------- #
-def _sync_text_to_int(text_key, int_key, mn, mx):
-    raw = st.session_state.get(text_key, "")
-    if isinstance(raw, str):
-        raw = raw.strip()
-    if raw == "":
-        st.session_state[int_key] = 0
-        return
-    try:
-        v = int(raw)
-        if v < mn or v > mx:
-            st.session_state[int_key] = max(mn, min(mx, v))  # clamp
-            st.error(f"Score must be between {mn} and {mx}!")
-        else:
-            st.session_state[int_key] = v
-    except ValueError:
-        st.session_state[int_key] = 0
-        st.error("Enter a number (0–7)")
-
-def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False):
-    txt = f"{key}_txt"
-    val = f"{key}_val"
+def number_input_in_table(key, min_value=0, max_value=7, disabled=False):
+    txt_key = f"{key}_txt"
+    val_key = f"{key}_val"
     
-    if val not in st.session_state:
-        st.session_state[val] = 0
-    if txt not in st.session_state:
-        st.session_state[txt] = str(st.session_state[val])
+    if val_key not in st.session_state:
+        st.session_state[val_key] = 0
+    if txt_key not in st.session_state:
+        st.session_state[txt_key] = str(st.session_state[val_key])
 
-    st.text_input(
-        label,
-        key=txt,
-        max_chars=1,
-        disabled=disabled,
-        help="0–7",
-        on_change=_sync_text_to_int,
-        args=(txt, val, min_value, max_value),
-        label_visibility="collapsed"
-    )
+    def _sync():
+        raw = st.session_state[txt_key]
+        if raw == "":
+            st.session_state[val_key] = 0
+            return
+        try:
+            v = int(raw)
+            if v < min_value or v > max_value:
+                st.session_state[val_key] = max(min_value, min(max_value, v))
+                st.error(f"Score must be 0–7!")
+            else:
+                st.session_state[val_key] = v
+        except ValueError:
+            st.session_state[val_key] = 0
+            st.error("Enter 0–7")
+
+    st.markdown(f"""
+    <input type="text" 
+           value="{st.session_state[txt_key]}" 
+           maxlength="1" 
+           style="width:60px; text-align:center; font-size:1.3rem; font-weight:bold; height:36px; padding:0;"
+           oninput="this.value=this.value.replace(/[^0-7]/g,'')"
+           onchange="window.parent.streamlit.setComponentValue('{txt_key}', this.value)">
+    """, unsafe_allow_html=True)
+
+    # Use Streamlit's hidden input to trigger on_change
+    st.text_input("", key=txt_key, max_chars=1, label_visibility="collapsed", on_change=_sync)
     
-    return int(st.session_state[val])
+    return int(st.session_state[val_key])
 
 # --------------------------------------------------------------------------- #
 # UI helpers
@@ -494,7 +493,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + FULL TOURNAMENT NAME + TABLE DESIGN
+    # TIGHT LAYOUT + IN-TABLE INPUTS
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -532,23 +531,7 @@ def main():
             color: white !important;
         }
 
-        /* SCORE INPUTS – 160px */
-        div[data-testid="stTextInput"] input:not([aria-label=""]) {
-            font-size: 1.8rem !important;
-            padding: 10px !important;
-            height: 3.0rem !important;
-            text-align: center;
-            min-width: 160px !important;
-            width: 160px !important;
-            background-color: white !important;
-            color: black !important;
-        }
-        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
-            background-color: #333 !important;
-            color: white !important;
-        }
-
-        /* TABLE: COMPACT, CLEAN */
+        /* TABLE: IN-TABLE INPUTS */
         .stMarkdown table {
             width: 100% !important;
             border-collapse: collapse;
@@ -574,21 +557,20 @@ def main():
         }
         .stMarkdown table td:nth-child(3), .stMarkdown table td:nth-child(4) {
             width: 60px;
-            font-size: 1.3rem;
-            font-weight: bold;
+            padding: 0 !important;
         }
         .stMarkdown table td:first-child {
             width: 50px;
             font-weight: 600;
         }
-
-        .stExpander > div > div > div {
-            padding-top: 0.2rem !important;
-            padding-bottom: 0.2rem !important;
-        }
-        .stColumns > div {
-            padding-left: 0.1rem !important;
-            padding-right: 0.1rem !important;
+        .stMarkdown table input {
+            width: 100% !important;
+            height: 100% !important;
+            border: none !important;
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: bold;
+            background: transparent;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -699,7 +681,7 @@ def main():
                             del st.session_state[k]
                     st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
                     st.session_state.loaded_id = None
-                    st.success("Tournament ready – scroll down to enter scores")
+                    st.success("Tournament ready – enter scores in table")
                     st.rerun()
 
     # --- Active tournament ---
@@ -723,7 +705,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (TABLE) ---
+    # --- Render rounds (IN-TABLE INPUTS) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -731,7 +713,19 @@ def main():
         complete = all(sum(m.get_scores()) > 0 for m in real_matches)
         label = f"Round {r+1} – {len(real_matches)} matches"
         with st.expander(label, expanded=not complete):
-            table_data = []
+            table_html = """
+            <table>
+                <thead>
+                    <tr>
+                        <th>Match</th>
+                        <th>P1</th>
+                        <th>S1</th>
+                        <th>S2</th>
+                        <th>P2</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
             for idx, match in enumerate(real_matches):
                 try:
                     entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
@@ -739,36 +733,29 @@ def main():
                 except StopIteration:
                     continue
 
-                live1 = number_input_simple(k1, label=" ", disabled=locked)
-                live2 = number_input_simple(k2, label=" ", disabled=locked)
+                live1 = int(st.session_state.get(f"{k1}_val", 0))
+                live2 = int(st.session_state.get(f"{k2}_val", 0))
 
                 if live1 == live2 and live1 != 0:
-                    st.error("Ties are not allowed!")
+                    st.error(f"Match {idx+1}: Ties not allowed!")
 
-                p1_name = match.player1.name
-                p2_name = match.player2.name
-                p1_style = ""
-                p2_style = ""
+                p1_style = "color:green; font-weight:bold;" if live1 > live2 and live1 > 0 else ""
+                p2_style = "color:green; font-weight:bold;" if live2 > live1 and live2 > 0 else ""
 
-                if live1 > live2 and live1 > 0:
-                    p1_style = "color: green; font-weight: bold;"
-                elif live2 > live1 and live2 > 0:
-                    p2_style = "color: green; font-weight: bold;"
+                # Use st.text_input inside table cell
+                col1, col2, col3, col4, col5 = st.columns([0.5, 1.8, 0.6, 0.6, 1.8])
+                with col1:
+                    st.write(f"**{idx+1}**")
+                with col2:
+                    st.markdown(f'<span style="{p1_style}">{match.player1.name}</span>', unsafe_allow_html=True)
+                with col3:
+                    st.text_input("", value=str(live1), key=f"{k1}_txt", max_chars=1, label_visibility="collapsed", disabled=locked)
+                with col4:
+                    st.text_input("", value=str(live2), key=f"{k2}_txt", max_chars=1, label_visibility="collapsed", disabled=locked)
+                with col5:
+                    st.markdown(f'<span style="{p2_style}">{match.player2.name}</span>', unsafe_allow_html=True)
 
-                table_data.append({
-                    "Match": f"**{idx+1}**",
-                    "P1": f'<span style="{p1_style}">{p1_name}</span>',
-                    "S1": live1,
-                    "S2": live2,
-                    "P2": f'<span style="{p2_style}">{p2_name}</span>',
-                })
-
-            if table_data:
-                df = pd.DataFrame(table_data)
-                st.markdown(
-                    df.to_html(escape=False, index=False),
-                    unsafe_allow_html=True
-                )
+            st.markdown("</tbody></table>", unsafe_allow_html=True)
 
         if complete:
             st.success(f"**Round {r+1} complete**")
