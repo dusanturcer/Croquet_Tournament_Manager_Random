@@ -732,9 +732,13 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
+# --- Ensure locked is defined ---
+if "is_locked" not in st.session_state:
+    st.session_state.is_locked = "Unlocked"
+locked = st.session_state.is_locked == "Locked"
+
 # --- Render rounds: each match on one line ---
 st.subheader("Rounds")
-locked = st.session_state.is_locked == "Locked"  # ensure locked is defined
 for r in range(tournament.num_rounds):
     pairings = tournament.get_round_pairings(r)
     real_matches = [m for m in pairings if m and m.player2]
@@ -743,14 +747,12 @@ for r in range(tournament.num_rounds):
 
     with st.expander(label, expanded=not complete):
         for m_idx, match in enumerate(real_matches):
-            # Find corresponding score keys
             try:
                 entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
                 _, _, k1, k2 = entry
             except StopIteration:
                 continue
 
-            # Single line: all columns in one row
             cols = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
             n, p1_col, h1_col, h2_col, p2_col, stat_col = cols
 
