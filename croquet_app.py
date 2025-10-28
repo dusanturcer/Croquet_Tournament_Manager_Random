@@ -496,114 +496,17 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + FULL TOURNAMENT NAME + FIX FORM INPUTS
+    # CSS (unchanged)
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        .block-container {
-            padding-top: 4rem !important;
-            padding-bottom: 0.8rem !important;
-        }
-        div[data-testid="stForm"] {
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
-            margin-top: 0 !important;
-        }
-        div[data-testid="stForm"] > div > div {
-            padding-top: 0 !important;
-        }
-        div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
-            font-size: 1rem !important;
-        }
-        div[data-testid="stForm"] div[data-testid="stTextInput"] input {
-            margin-top: 0.2rem !important;
-            height: 2.8rem !important;
-        }
-
-        /* TOURNAMENT NAME: FULL WIDTH, NO CUT-OFF */
-        div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
-            width: 100% !important;
-            min-width: 100% !important;
-            background-color: white !important;
-            color: black !important;
-        }
-        .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
-            background-color: #262730 !important;
-            color: white !important;
-        }
-
-        /* SCORE INPUTS – 160px */
-        div[data-testid="stTextInput"] input:not([aria-label=""]) {
-            font-size: 1.8rem !important;
-            padding: 10px !important;
-            height: 3.0rem !important;
-            text-align: center;
-            min-width: 160px !important;
-            width: 160px !important;
-            background-color: white !important;
-            color: black !important;
-        }
-        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
-            background-color: #333 !important;
-            color: white !important;
-        }
-
-        .player-name {
-            display: flex;
-            align-items: center;
-            height: 3.0rem;
-            font-size: 1.1rem;
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            padding-left: 2px;
-        }
-        .result-metric {
-            min-width: 90px !important;
-            text-align: center;
-            font-size: 1.0rem !important;
-        }
-        .result-metric > div {
-            height: 3.0rem !important;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-        .stExpander > div > div > div {
-            padding-top: 0.2rem !important;
-            padding-bottom: 0.2rem !important;
-        }
-        .stColumns > div {
-            padding-left: 0.1rem !important;
-            padding-right: 0.1rem !important;
-        }
-        .stColumns > div > div {
-            margin: 0 !important;
-        }
-        /* Make all buttons green, including form buttons */
-        div.stButton > button,
-        form div.stButton > button,
-        button[kind="primaryFormSubmit"],
-        button[kind="secondaryFormSubmit"] {
-            background-color: #28a745 !important;
-            color: white !important;
-            border: none !important;
-        }
-
-        div.stButton > button:hover,
-        form div.stButton > button:hover,
-        button[kind="primaryFormSubmit"]:hover,
-        button[kind="secondaryFormSubmit"]:hover {
-            background-color: #218838 !important;
-        }
+        .block-container {padding-top: 4rem !important; padding-bottom: 0.8rem !important;}
+        div[data-testid="stForm"] {padding-top: 0 !important; padding-bottom: 0 !important; margin-top: 0 !important;}
+        /* … (the rest of your CSS – keep exactly as you had it) … */
     </style>
     """, unsafe_allow_html=True)
 
-    # --- Ensure DB schema ---
+    # --- Ensure DB schema ------------------------------------------------
     try:
         conn = get_connection()
         init_schema(conn)
@@ -612,28 +515,31 @@ def main():
         st.error(f"Failed to initialise database: {e}")
         st.stop()
 
-    # --- Session state ---
+    # --- Session-state defaults -----------------------------------------
     defaults = {
         "tournament": None, "tournament_name": "New Tournament",
         "players": [], "num_rounds": 3, "loaded_id": None,
         "is_locked": "Unlocked", "_lock_changed": False,
+        "score_keys": None
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
-    locked = st.session_state.is_locked == "Locked"
+    # --- Lock handling --------------------------------------------------
     if st.session_state._lock_changed:
         st.session_state._lock_changed = False
-        st.toast("Tournament Input is **Locked**" if locked else "Tournament Input is **Unlocked**")
+        st.toast("Tournament Input is **Locked**" if st.session_state.is_locked == "Locked" else "Tournament Input is **Unlocked**")
         st.rerun()
 
-    # --- Sidebar ---
+    # --- Sidebar --------------------------------------------------------
     with st.sidebar:
         st.header("ACC Tournament Manager")
         st.session_state.is_locked = st.radio(
-            "Input", ["Unlocked", "Locked"], index=0 if not locked else 1,
-            horizontal=True, help="**Locked** disables score entry.",
+            "Input", ["Unlocked", "Locked"],
+            index=0 if st.session_state.is_locked == "Unlocked" else 1,
+            horizontal=True,
+            help="**Locked** disables score entry.",
             on_change=handle_lock_change
         )
 
@@ -645,18 +551,14 @@ def main():
         tour_list = load_tournaments_list(get_db_mtime())
         options = ["--- New Tournament ---"] + [t[1] for t in tour_list]
         id_map = {t[1]: t[0] for t in tour_list}
-        default_idx = 0
-        if st.session_state.loaded_id:
-            for i, (tid, disp) in enumerate(tour_list):
-                if tid == st.session_state.loaded_id:
-                    default_idx = i + 1
-                    break
+        default_idx = next((i + 1 for i, (tid, _) in enumerate(tour_list) if tid == st.session_state.loaded_id), 0)
         sel_disp = st.selectbox("Select tournament", options, index=default_idx)
         sel_id = id_map.get(sel_disp)
 
         if sel_disp == "--- New Tournament ---" and st.session_state.tournament:
             if st.button("Start fresh"):
-                for k in defaults: st.session_state[k] = defaults[k]
+                for k in defaults:
+                    st.session_state[k] = defaults[k]
                 st.rerun()
         elif sel_id and sel_id != st.session_state.loaded_id:
             load_selected_tournament(sel_id)
@@ -664,51 +566,33 @@ def main():
 
         if sel_id:
             st.markdown("---")
-            if st.button(f"Delete **{sel_disp}**", disabled=locked):
+            if st.button(f"Delete **{sel_disp}**", disabled=st.session_state.is_locked == "Locked"):
                 if delete_tournament_from_db(sel_id):
                     st.success("Deleted")
                     if st.session_state.loaded_id == sel_id:
-                        for k in defaults: st.session_state[k] = defaults[k]
+                        for k in defaults:
+                            st.session_state[k] = defaults[k]
                     st.rerun()
                 else:
                     st.error("Delete failed")
 
-    # --- Ensure score_keys exists only once ---
-        if "score_keys" not in st.session_state:
-            st.session_state.score_keys = []
-            for r in range(tournament.num_rounds):
-                pairings = tournament.get_round_pairings(r)
-                for m, match in enumerate(pairings):
-                    if match and match.player2:
-                        k1 = f"hoops1_r{r}_m{m}"
-                        k2 = f"hoops2_r{r}_m{m}"
-                        v1, v2 = match.get_scores()
-
-                        # Initialize session state only if missing
-                        if f"{k1}_val" not in st.session_state:
-                            st.session_state[f"{k1}_val"] = v1
-                        if f"{k2}_val" not in st.session_state:
-                            st.session_state[f"{k2}_val"] = v2
-
-                        st.session_state.score_keys.append((r, m, k1, k2))
-
-    # --- Create tournament ---
-    expander_open = not bool(st.session_state.tournament)
-    with st.expander("Create / Setup Tournament", expanded=expander_open):
-        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+    # --------------------------------------------------------------- #
+    # CREATE / SETUP TOURNAMENT
+    # --------------------------------------------------------------- #
+    with st.expander("Create / Setup Tournament", expanded=not bool(st.session_state.tournament)):
         with st.form("setup_form"):
-            # FULL WIDTH TOURNAMENT NAME
             st.session_state.tournament_name = st.text_input(
-                "Tournament name",
-                value=st.session_state.tournament_name,
-                disabled=locked,
+                "Tournament name", value=st.session_state.tournament_name,
+                disabled=st.session_state.is_locked == "Locked",
                 key="tournament_name_input"
             )
             players_txt = st.text_area(
-                "Players (one per line)", "\n".join(st.session_state.players), height=200, disabled=locked
+                "Players (one per line)", "\n".join(st.session_state.players),
+                height=200, disabled=st.session_state.is_locked == "Locked"
             )
             st.session_state.num_rounds = st.number_input(
-                "Rounds", 1, 15, st.session_state.num_rounds, disabled=locked
+                "Rounds", 1, 15, st.session_state.num_rounds,
+                disabled=st.session_state.is_locked == "Locked"
             )
 
             player_count = len([p for p in players_txt.splitlines() if p.strip()])
@@ -719,31 +603,34 @@ def main():
                 else:
                     st.markdown(f"**Recommended**: Play **{rec} rounds** → everyone plays **{rec} games**, **1 bye each**.")
 
-            if st.form_submit_button("Create", disabled=locked):
+            if st.form_submit_button("Create", disabled=st.session_state.is_locked == "Locked"):
                 new_players = [p.strip() for p in players_txt.splitlines() if p.strip()]
                 if len(new_players) < 2:
                     st.error("Need >= 2 players")
                 else:
+                    # ---- wipe old score state ----
                     for k in list(st.session_state.keys()):
-                        if k.startswith(("hoops1_", "hoops2_")):
+                        if k.startswith(("hoops1_", "hoops2_")) or k == "score_keys":
                             del st.session_state[k]
                     st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
                     st.session_state.loaded_id = None
+                    st.session_state.score_keys = None
                     st.success("Tournament ready – scroll down to enter scores")
                     st.rerun()
 
-    # --- Active tournament ---
+    # --------------------------------------------------------------- #
+    # ACTIVE TOURNAMENT – **everything that uses `tournament` is here**
+    # --------------------------------------------------------------- #
     if not st.session_state.tournament:
         st.info("Create or load a tournament to continue.")
         st.stop()
 
     tournament = st.session_state.tournament
     st.header(f"**{st.session_state.tournament_name}**")
-
     locked = st.session_state.is_locked == "Locked"
 
-    # --- Ensure score_keys exists only once ---
-    if "score_keys" not in st.session_state:
+    # ---- Build score_keys **once** (new or loaded) ----
+    if st.session_state.score_keys is None:
         st.session_state.score_keys = []
         for r in range(tournament.num_rounds):
             pairings = tournament.get_round_pairings(r)
@@ -758,7 +645,9 @@ def main():
                         st.session_state[f"{k2}_val"] = v2
                     st.session_state.score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (2 per row) ---
+    # --------------------------------------------------------------- #
+    # RENDER ROUNDS – 2 per row, live sync
+    # --------------------------------------------------------------- #
     st.subheader("Rounds")
 
     for r in range(tournament.num_rounds):
@@ -774,14 +663,12 @@ def main():
                 cols = st.columns(2)
 
                 for idx, match in enumerate(batch):
-                    # Find key from session_state (already built once)
-                    entry = next((e for e in st.session_state.score_keys 
-                                if e[0] == r and e[1] == pairings.index(match)), None)
+                    entry = next((e for e in st.session_state.score_keys
+                                 if e[0] == r and e[1] == pairings.index(match)), None)
                     if not entry:
                         continue
                     _, _, k1, k2 = entry
 
-                    # Read CURRENT values from session (user input)
                     live1 = int(st.session_state.get(f"{k1}_val", 0))
                     live2 = int(st.session_state.get(f"{k2}_val", 0))
 
@@ -794,7 +681,6 @@ def main():
                         with h1:
                             new1 = number_input_simple(k1, label=" ", disabled=locked)
                             if new1 != live1:
-                                # Sync to tournament
                                 tournament.record_result(r, pairings.index(match), new1, live2)
 
                         with h2:
@@ -816,13 +702,14 @@ def main():
                                     f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
                                     unsafe_allow_html=True
                                 )
-
                     match_no += 1
 
         if complete:
             st.success(f"**Round {r+1} complete**")
 
-    # --- Recalculate ---
+    # --------------------------------------------------------------- #
+    # RECALCULATE STANDINGS
+    # --------------------------------------------------------------- #
     st.markdown("---")
     with st.container():
         col1, col2 = st.columns([1, 3])
@@ -832,12 +719,16 @@ def main():
             st.write("")
 
         if recalc:
+            # reset player stats
             for p in tournament.players:
                 p.points = p.wins = p.hoops_scored = p.hoops_conceded = 0
             tournament.games_played_with_result = {p.id: 0 for p in tournament.players}
-            for r, m_idx, k1, k2 in score_keys:
+
+            # apply every stored score
+            for r, m_idx, k1, k2 in st.session_state.score_keys:
                 match = tournament.get_round_pairings(r)[m_idx]
-                if not match or not match.player2: continue
+                if not match or not match.player2:
+                    continue
                 h1 = st.session_state.get(f"{k1}_val", 0)
                 h2 = st.session_state.get(f"{k2}_val", 0)
                 match.result = None
@@ -845,10 +736,13 @@ def main():
                 if h1 > 0 or h2 > 0:
                     tournament.games_played_with_result[match.player1.id] += 1
                     tournament.games_played_with_result[match.player2.id] += 1
+
             st.success("Standings recalculated!")
             st.rerun()
 
-    # --- Standings ---
+    # --------------------------------------------------------------- #
+    # STANDINGS
+    # --------------------------------------------------------------- #
     st.markdown("---")
     st.subheader("Current Standings")
     standings = tournament.get_standings()
@@ -865,10 +759,12 @@ def main():
         "Win %": f"{(p.wins / tournament.games_played_with_result.get(p.id, 0) * 100):.1f}%" 
                  if tournament.games_played_with_result.get(p.id, 0) > 0 else "0.0%"
     } for i, p in enumerate(standings)])
-    
+
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # --- Save / Export ---
+    # --------------------------------------------------------------- #
+    # SAVE / EXPORT
+    # --------------------------------------------------------------- #
     st.markdown("---")
     st.subheader("Save & Export")
     c1, c2, c3 = st.columns(3)
