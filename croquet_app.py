@@ -514,6 +514,16 @@ def main():
             color: white !important;
         }
 
+        /* FIX: TOURNAMENT NAME INPUT – FULLY VISIBLE, NO CUT-OFF */
+        div[data-testid="stForm"] div[data-testid="stTextInput"] > label,
+        div[data-testid="stForm"] div[data-testid="stTextInput"] input {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        div[data-testid="stForm"] {
+            padding-top: 0 !important;
+        }
+
         /* 2. PLAYER NAMES – aligned, no overflow */
         .player-name {
             display: flex;
