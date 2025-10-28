@@ -582,37 +582,22 @@ def main():
         .stColumns > div > div {
             margin: 0 !important;
         }
-        /* Make all Streamlit buttons green */
-        div.stButton > button {
-            background-color: #28a745;
-            color: white;
-            border: none;
-        }
-        div.stButton > button:hover {
-            background-color: #218838;
-        }
-        /* Standard buttons */
-        div.stButton > button {
-            background-color: #28a745;
-            color: white;
-            border: none;
+        /* Make all buttons green, including form buttons */
+        div.stButton > button,
+        form div.stButton > button,
+        button[kind="primaryFormSubmit"],
+        button[kind="secondaryFormSubmit"] {
+            background-color: #28a745 !important;
+            color: white !important;
+            border: none !important;
         }
 
-        /* Buttons on hover */
-        div.stButton > button:hover {
-            background-color: #218838;
+        div.stButton > button:hover,
+        form div.stButton > button:hover,
+        button[kind="primaryFormSubmit"]:hover,
+        button[kind="secondaryFormSubmit"]:hover {
+            background-color: #218838 !important;
         }
-
-        /* Form submit buttons */
-        form div.stButton > button {
-            background-color: #28a745;
-            color: white;
-            border: none;
-        }
-
-        form div.stButton > button:hover {
-            background-color: #218838;
-        }        
     </style>
     """, unsafe_allow_html=True)
 
