@@ -443,22 +443,6 @@ def number_input_simple(key, min_value=0, max_value=26, label=" ", disabled=Fals
     if txt not in st.session_state:
         st.session_state[txt] = ""
 
-    st.markdown("""
-    <style>
-        div[data-testid="stTextInput"] input {
-            font-size: 1.1rem !important;
-            padding: 8px !important;
-            text-align: center;
-            background-color: white !important;
-            color: black !important;
-        }
-        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input {
-            background-color: #333 !important;
-            color: white !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
     st.text_input(
         label,
         key=txt,
@@ -503,34 +487,61 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # COMPACT CSS – removes empty space, keeps field size unchanged #
+    # BIG SCORE FIELDS + ALIGNED NAMES + TIGHT LAYOUT               #
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        /* Remove huge top/bottom padding from expanders */
+        /* 1. BIG SCORE INPUTS (3× larger) */
+        div[data-testid="stTextInput"] input {
+            font-size: 1.8rem !important;
+            padding: 12px !important;
+            height: 3.2rem !important;
+            text-align: center;
+            min-width: 70px !important;
+            background-color: white !important;
+            color: black !important;
+        }
+        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input {
+            background-color: #333 !important;
+            color: white !important;
+        }
+
+        /* 2. PLAYER NAMES – aligned with score fields */
+        .player-name {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            height: 3.2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding-left: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 3. TIGHT LAYOUT – remove all gaps */
         .stExpander > div > div > div {
             padding-top: 0.3rem !important;
             padding-bottom: 0.3rem !important;
         }
-
-        /* Tighten the columns that hold each match card */
         .stColumns > div {
             padding-left: 0.2rem !important;
             padding-right: 0.2rem !important;
         }
-
-        /* Reduce spacing inside the match-card columns */
         .stColumns > div > div {
             margin: 0 !important;
         }
-
-        /* Keep the metric small but readable */
         .stMetric {
             font-size: 0.9rem !important;
             margin: 0 !important;
         }
-
-        /* Optional: make the whole app a bit denser */
+        .stMetric > div {
+            height: 3.2rem !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 1rem !important;
@@ -664,7 +675,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (COMPACT: 4 matches per row) ---
+    # --- Render rounds (4 per row, big fields, aligned) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -685,10 +696,10 @@ def main():
                     with cols[idx]:
                         n, p1, h1, h2, p2, stat = st.columns([0.3, 1.3, 0.6, 0.6, 1.3, 0.9])
                         with n: st.write(f"**{i+idx+1}**")
-                        with p1: st.write(f"**{match.player1.name}**")
+                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
                         with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
                         with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
-                        with p2: st.write(f"**{match.player2.name}**")
+                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
                         with stat:
                             if live1 == live2 == 0:
                                 st.write("–")
