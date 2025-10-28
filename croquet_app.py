@@ -734,10 +734,29 @@ def main():
 
     # --- Active tournament ---
     if not st.session_state.tournament:
+        st.info("Create or load a tournament to continue.")
         st.stop()
 
     tournament = st.session_state.tournament
     st.header(f"**{st.session_state.tournament_name}**")
+
+    locked = st.session_state.is_locked == "Locked"
+
+    # --- Ensure score_keys exists only once ---
+    if "score_keys" not in st.session_state:
+        st.session_state.score_keys = []
+        for r in range(tournament.num_rounds):
+            pairings = tournament.get_round_pairings(r)
+            for m, match in enumerate(pairings):
+                if match and match.player2:
+                    k1 = f"hoops1_r{r}_m{m}"
+                    k2 = f"hoops2_r{r}_m{m}"
+                    v1, v2 = match.get_scores()
+                    if f"{k1}_val" not in st.session_state:
+                        st.session_state[f"{k1}_val"] = v1
+                    if f"{k2}_val" not in st.session_state:
+                        st.session_state[f"{k2}_val"] = v2
+                    st.session_state.score_keys.append((r, m, k1, k2))
 
     # --- Render rounds (2 per row) ---
     st.subheader("Rounds")
