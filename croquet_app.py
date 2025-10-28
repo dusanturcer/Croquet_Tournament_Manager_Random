@@ -732,52 +732,44 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-# --- Ensure locked is defined ---
-if "is_locked" not in st.session_state:
-    st.session_state.is_locked = "Unlocked"
-locked = st.session_state.is_locked == "Locked"
+    # --- Render rounds (4 per row) ---
+    st.subheader("Rounds")
+    for r in range(tournament.num_rounds):
+        pairings = tournament.get_round_pairings(r)
+        real_matches = [m for m in pairings if m and m.player2]
+        complete = all(sum(m.get_scores()) > 0 for m in real_matches)
+        label = f"Round {r+1} – {len(real_matches)} matches"
+        with st.expander(label, expanded=not complete):
+            for i in range(0, len(real_matches), 4):
+                batch = real_matches[i:i+4]
+                cols = st.columns(4)
+                for idx, match in enumerate(batch):
+                    try:
+                        entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
+                        _, _, k1, k2 = entry
+                    except StopIteration:
+                        continue
 
-# --- Render rounds: each match on one line ---
-st.subheader("Rounds")
-for r in range(tournament.num_rounds):
-    pairings = tournament.get_round_pairings(r)
-    real_matches = [m for m in pairings if m and m.player2]
-    complete = all(sum(m.get_scores()) > 0 for m in real_matches)
-    label = f"Round {r+1} – {len(real_matches)} matches"
+                    with cols[idx]:
+                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+                        with n: st.write(f"**{i+idx+1}**")
+                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+                        with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
+                        with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
+                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-    with st.expander(label, expanded=not complete):
-        for m_idx, match in enumerate(real_matches):
-            try:
-                entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
-                _, _, k1, k2 = entry
-            except StopIteration:
-                continue
+                        if live1 == live2 and live1 != 0:
+                            st.error("Ties are not allowed!")
 
-            cols = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
-            n, p1_col, h1_col, h2_col, p2_col, stat_col = cols
+                        with stat:
+                            if live1 == live2 == 0:
+                                st.write("–")
+                            else:
+                                winner = "P1" if live1 > live2 else "P2"
+                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
 
-            with n:
-                st.write(f"**{m_idx+1}**")
-            with p1_col:
-                st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
-            with h1_col:
-                live1 = number_input_simple(k1, label=" ", disabled=locked)
-            with h2_col:
-                live2 = number_input_simple(k2, label=" ", disabled=locked)
-            with p2_col:
-                st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
-            with stat_col:
-                if live1 == live2 and live1 != 0:
-                    st.error("Ties are not allowed!")
-                elif live1 == live2 == 0:
-                    st.write("–")
-                else:
-                    winner = "P1" if live1 > live2 else "P2"
-                    st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
-
-    if complete:
-        st.success(f"**Round {r+1} complete**")
-
+        if complete:
+            st.success(f"**Round {r+1} complete**")
 
     # --- Recalculate ---
     st.markdown("---")
