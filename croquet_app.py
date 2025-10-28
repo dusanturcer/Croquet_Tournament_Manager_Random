@@ -494,7 +494,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER
+    # TIGHT LAYOUT + FULL TOURNAMENT NAME + FIX FORM INPUTS
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -519,7 +519,21 @@ def main():
             margin-top: 0.2rem !important;
             height: 2.8rem !important;
         }
-        div[data-testid="stTextInput"] input {
+
+        /* TOURNAMENT NAME: FULL WIDTH, NO CUT-OFF */
+        div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
+            width: 100% !important;
+            min-width: 100% !important;
+            background-color: white !important;
+            color: black !important;
+        }
+        .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
+            background-color: #262730 !important;
+            color: white !important;
+        }
+
+        /* SCORE INPUTS – 160px */
+        div[data-testid="stTextInput"] input:not([aria-label=""]) {
             font-size: 1.8rem !important;
             padding: 10px !important;
             height: 3.0rem !important;
@@ -529,10 +543,11 @@ def main():
             background-color: white !important;
             color: black !important;
         }
-        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input {
+        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
             background-color: #333 !important;
             color: white !important;
         }
+
         .player-name {
             display: flex;
             align-items: center;
@@ -645,8 +660,12 @@ def main():
     with st.expander("Create / Setup Tournament", expanded=expander_open):
         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
         with st.form("setup_form"):
+            # FULL WIDTH TOURNAMENT NAME
             st.session_state.tournament_name = st.text_input(
-                "Tournament name", value=st.session_state.tournament_name, disabled=locked
+                "Tournament name",
+                value=st.session_state.tournament_name,
+                disabled=locked,
+                key="tournament_name_input"
             )
             players_txt = st.text_area(
                 "Players (one per line)", "\n".join(st.session_state.players), height=200, disabled=locked
@@ -723,7 +742,6 @@ def main():
                         with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
                         with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-                        # TIE VALIDATION (real-time)
                         if live1 == live2 and live1 != 0:
                             st.error("Ties are not allowed!")
 
