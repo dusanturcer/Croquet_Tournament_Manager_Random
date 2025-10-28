@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
-# DB connection – uses DATABASE_URL (Render/Supavisor)
+# DB connection
 # --------------------------------------------------------------------------- #
 def get_connection():
     url = os.getenv("DATABASE_URL")
@@ -123,7 +123,7 @@ class Match:
         return self.result if self.result else (0, 0)
 
 # --------------------------------------------------------------------------- #
-# UNIVERSAL SWISS TOURNAMENT
+# Swiss Tournament
 # --------------------------------------------------------------------------- #
 class SwissTournament:
     def __init__(self, players_names_or_objects, num_rounds):
@@ -419,7 +419,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Single-digit input (0-9) – 160px wide
+# Single-digit input
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -488,17 +488,14 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER                 #
+    # CLEAN LAYOUT + FULL HEADER + NO CLIPPING
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        /* PUSH PAGE DOWN – SHOW FULL HEADER */
         .block-container {
             padding-top: 4rem !important;
             padding-bottom: 0.8rem !important;
         }
-
-        /* SCORE INPUTS – 160px WIDE */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
             padding: 10px !important;
@@ -513,8 +510,6 @@ def main():
             background-color: #333 !important;
             color: white !important;
         }
-
-        /* PLAYER NAMES */
         .player-name {
             display: flex;
             align-items: center;
@@ -526,8 +521,6 @@ def main():
             text-overflow: ellipsis;
             padding-left: 2px;
         }
-
-        /* RESULT */
         .result-metric {
             min-width: 90px !important;
             text-align: center;
@@ -540,8 +533,6 @@ def main():
             justify-content: center;
             align-items: center;
         }
-
-        /* REMOVE GAPS */
         .stExpander > div > div > div {
             padding-top: 0.2rem !important;
             padding-bottom: 0.2rem !important;
@@ -552,11 +543,6 @@ def main():
         }
         .stColumns > div > div {
             margin: 0 !important;
-        }
-
-        /* FIX TEXT INPUT IN EXPANDER (NO CLIPPING) */
-        .stTextInput > div > div {
-            padding-top: 0 !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -634,38 +620,89 @@ def main():
     # --- Create tournament ---
     expander_open = not bool(st.session_state.tournament)
     with st.expander("Create / Setup Tournament", expanded=expander_open):
-        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)  # ← ADD SPACE ABOVE FORM
-        with st.form("setup_form"):
-            st.session_state.tournament_name = st.text_input(
-                "Tournament name", value=st.session_state.tournament_name, disabled=locked
-            )
-            players_txt = st.text_area(
-                "Players (one per line)", "\n".join(st.session_state.players), height=200, disabled=locked
-            )
-            st.session_state.num_rounds = st.number_input(
-                "Rounds", 1, 15, st.session_state.num_rounds, disabled=locked
-            )
+        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
 
-            player_count = len([p for p in players_txt.splitlines() if p.strip()])
-            if player_count >= 2:
-                rec = player_count - 1
-                if player_count % 2 == 0:
-                    st.markdown(f"**Perfect**: Play **{rec} rounds** → everyone plays everyone once.")
-                else:
-                    st.markdown(f"**Recommended**: Play **{rec} rounds** → everyone plays **{rec} games**, **1 bye each**.")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown("""
+            <label style="font-weight:600; margin-bottom:0.3rem; display:block;">Tournament name</label>
+            <input type="text" id="tournament_name" value="{0}" style="
+                width:100%; padding:0.6rem; font-size:1rem; border:1px solid #ccc; border-radius:4px; 
+                box-sizing:border-box; height:40px;" {1}/>
+            """.format(st.session_state.tournament_name, 'disabled' if locked else ''), unsafe_allow_html=True)
+        with col2:
+            st.markdown("""
+            <label style="font-weight:600; margin-bottom:0.3rem; display:block;">Rounds</label>
+            <input type="number" id="num_rounds" value="{0}" min="1" max="15" style="
+                width:100%; padding:0.6rem; font-size:1rem; border:1px solid #ccc; border-radius:4px; 
+                box-sizing:border-box; height:40px;" {1}/>
+            """.format(st.session_state.num_rounds, 'disabled' if locked else ''), unsafe_allow_html=True)
 
-            if st.form_submit_button("Create", disabled=locked):
-                new_players = [p.strip() for p in players_txt.splitlines() if p.strip()]
-                if len(new_players) < 2:
-                    st.error("Need >= 2 players")
-                else:
-                    for k in list(st.session_state.keys()):
-                        if k.startswith(("hoops1_", "hoops2_")):
-                            del st.session_state[k]
-                    st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
-                    st.session_state.loaded_id = None
-                    st.success("Tournament ready – scroll down to enter scores")
-                    st.rerun()
+        st.markdown("""
+        <label style="font-weight:600; margin-top:1rem; margin-bottom:0.3rem; display:block;">Players (one per line)</label>
+        <textarea id="players_input" style="width:100%; height:200px; padding:0.6rem; font-size:1rem; 
+                  border:1px solid #ccc; border-radius:4px; box-sizing:border-box;" {0}>{1}</textarea>
+        """.format('disabled' if locked else '', "\n".join(st.session_state.players)), unsafe_allow_html=True)
+
+        # === Sync HTML inputs ===
+        if not locked:
+            st.markdown("""
+            <script>
+            const nameInput = document.getElementById('tournament_name');
+            const roundsInput = document.getElementById('num_rounds');
+            const playersInput = document.getElementById('players_input');
+            nameInput.addEventListener('input', () => {
+                window.parent.postMessage({type: 'streamlit:setComponentValue', value: nameInput.value, key: 'tournament_name'}, '*');
+            });
+            roundsInput.addEventListener('input', () => {
+                window.parent.postMessage({type: 'streamlit:setComponentValue', value: roundsInput.value, key: 'num_rounds'}, '*');
+            });
+            playersInput.addEventListener('input', () => {
+                window.parent.postMessage({type: 'streamlit:setComponentValue', value: playersInput.value, key: 'players_input'}, '*');
+            });
+            </script>
+            """, unsafe_allow_html=True)
+
+            # Capture updates
+            if 'tournament_name' in st.session_state:
+                st.session_state.tournament_name = st.session_state.tournament_name
+            if 'num_rounds' in st.session_state:
+                try:
+                    st.session_state.num_rounds = int(st.session_state.num_rounds)
+                except:
+                    pass
+
+        current_players_text = st.session_state.get('players_input', "\n".join(st.session_state.players))
+        player_lines = [p.strip() for p in current_players_text.splitlines() if p.strip()]
+        player_count = len(player_lines)
+
+        if player_count >= 2:
+            rec = player_count - 1
+            if player_count % 2 == 0:
+                st.success(f"**Perfect**: Play **{rec} rounds** → everyone plays everyone once.")
+            else:
+                st.info(f"**Recommended**: Play **{rec} rounds** → everyone plays **{rec} games**, **1 bye each**.")
+        elif player_count == 1:
+            st.warning("Add at least one more player.")
+        elif player_count == 0:
+            st.info("Enter player names, one per line.")
+
+        create_col = st.columns([1, 4])[0]
+        with create_col:
+            create_btn = st.button("Create Tournament", disabled=locked, use_container_width=True)
+
+        if create_btn:
+            new_players = player_lines
+            if len(new_players) < 2:
+                st.error("Need at least 2 players")
+            else:
+                for k in list(st.session_state.keys()):
+                    if k.startswith(("hoops1_", "hoops2_")):
+                        del st.session_state[k]
+                st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
+                st.session_state.loaded_id = None
+                st.success("Tournament ready – scroll down to enter scores")
+                st.rerun()
 
     # --- Active tournament ---
     if not st.session_state.tournament:
@@ -688,7 +725,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (4 per row, tight layout) ---
+    # --- Render rounds ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
