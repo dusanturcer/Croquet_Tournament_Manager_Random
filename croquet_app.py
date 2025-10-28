@@ -494,7 +494,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + FULL TOURNAMENT NAME + INLINE RESULT
+    # TIGHT LAYOUT + FULL TOURNAMENT NAME + TABLE DESIGN
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -548,29 +548,39 @@ def main():
             color: white !important;
         }
 
-        /* PLAYER NAME WITH RESULT – COMPACT */
-        .player-name {
-            display: flex;
-            align-items: center;
-            height: 3.0rem;
+        /* TABLE: COMPACT, CLEAN */
+        .stMarkdown table {
+            width: 100% !important;
+            border-collapse: collapse;
             font-size: 1.1rem;
+            margin-top: 0.5rem;
+        }
+        .stMarkdown table th, .stMarkdown table td {
+            padding: 6px 8px !important;
+            text-align: center;
+            vertical-align: middle;
+            border: 1px solid #ddd;
+        }
+        .stMarkdown table th {
+            background-color: #f5f5f5;
             font-weight: 600;
+        }
+        .stMarkdown table td:nth-child(2), .stMarkdown table td:nth-child(5) {
+            text-align: left;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            padding-left: 2px;
-            line-height: 1.2;
+            max-width: 180px;
         }
-        .player-name em {
-            color: #666;
-            font-style: italic;
-            font-weight: normal;
-            margin-left: 4px;
-            font-size: 0.9rem;
+        .stMarkdown table td:nth-child(3), .stMarkdown table td:nth-child(4) {
+            width: 60px;
+            font-size: 1.3rem;
+            font-weight: bold;
         }
-
-        /* HIDE OLD RESULT BOX */
-        .result-metric { display: none !important; }
+        .stMarkdown table td:first-child {
+            width: 50px;
+            font-weight: 600;
+        }
 
         .stExpander > div > div > div {
             padding-top: 0.2rem !important;
@@ -579,9 +589,6 @@ def main():
         .stColumns > div {
             padding-left: 0.1rem !important;
             padding-right: 0.1rem !important;
-        }
-        .stColumns > div > div {
-            margin: 0 !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -716,7 +723,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (4 per row) ---
+    # --- Render rounds (TABLE) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -724,42 +731,44 @@ def main():
         complete = all(sum(m.get_scores()) > 0 for m in real_matches)
         label = f"Round {r+1} – {len(real_matches)} matches"
         with st.expander(label, expanded=not complete):
-            for i in range(0, len(real_matches), 4):
-                batch = real_matches[i:i+4]
-                cols = st.columns(4)
-                for idx, match in enumerate(batch):
-                    try:
-                        entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
-                        _, _, k1, k2 = entry
-                    except StopIteration:
-                        continue
+            table_data = []
+            for idx, match in enumerate(real_matches):
+                try:
+                    entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
+                    _, _, k1, k2 = entry
+                except StopIteration:
+                    continue
 
-                    with cols[idx]:
-                        n, p1, h1, h2, p2 = st.columns([0.3, 1.3, 0.6, 0.6, 1.3])
-                        with n: st.write(f"**{i+idx+1}**")
-                        
-                        live1 = number_input_simple(k1, label=" ", disabled=locked)
-                        live2 = number_input_simple(k2, label=" ", disabled=locked)
+                live1 = number_input_simple(k1, label=" ", disabled=locked)
+                live2 = number_input_simple(k2, label=" ", disabled=locked)
 
-                        # TIE VALIDATION
-                        if live1 == live2 and live1 != 0:
-                            st.error("Ties are not allowed!")
+                if live1 == live2 and live1 != 0:
+                    st.error("Ties are not allowed!")
 
-                        # RESULT IN NAME
-                        p1_name = match.player1.name
-                        p2_name = match.player2.name
-                        if live1 > 0 or live2 > 0:
-                            if live1 > live2:
-                                p1_name = f"**{p1_name}** _(_{live1}–{live2} win_)_"
-                            elif live2 > live1:
-                                p2_name = f"**{p2_name}** _(_{live2}–{live1} win_)_"
+                p1_name = match.player1.name
+                p2_name = match.player2.name
+                p1_style = ""
+                p2_style = ""
 
-                        with p1: 
-                            st.markdown(f'<div class="player-name">{p1_name}</div>', unsafe_allow_html=True)
-                        with h1: st.write("")
-                        with h2: st.write("")
-                        with p2: 
-                            st.markdown(f'<div class="player-name">{p2_name}</div>', unsafe_allow_html=True)
+                if live1 > live2 and live1 > 0:
+                    p1_style = "color: green; font-weight: bold;"
+                elif live2 > live1 and live2 > 0:
+                    p2_style = "color: green; font-weight: bold;"
+
+                table_data.append({
+                    "Match": f"**{idx+1}**",
+                    "P1": f'<span style="{p1_style}">{p1_name}</span>',
+                    "S1": live1,
+                    "S2": live2,
+                    "P2": f'<span style="{p2_style}">{p2_name}</span>',
+                })
+
+            if table_data:
+                df = pd.DataFrame(table_data)
+                st.markdown(
+                    df.to_html(escape=False, index=False),
+                    unsafe_allow_html=True
+                )
 
         if complete:
             st.success(f"**Round {r+1} complete**")
