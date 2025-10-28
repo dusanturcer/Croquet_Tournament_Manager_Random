@@ -419,7 +419,7 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
-# Single-digit input (0-7) – 160px wide
+# Single-digit input (0-7) – REAL-TIME VALIDATION + ERROR
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
@@ -430,9 +430,14 @@ def _sync_text_to_int(text_key, int_key, mn, mx):
         return
     try:
         v = int(raw)
-        st.session_state[int_key] = max(mn, min(mx, v))
+        if v < mn or v > mx:
+            st.session_state[int_key] = max(mn, min(mx, v))  # clamp
+            st.error(f"Score must be between {mn} and {mx}!")
+        else:
+            st.session_state[int_key] = v
     except ValueError:
         st.session_state[int_key] = 0
+        st.error("Enter a number (0–7)")
 
 def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False):
     txt = f"{key}_txt"
@@ -441,18 +446,19 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
     if val not in st.session_state:
         st.session_state[val] = 0
     if txt not in st.session_state:
-        st.session_state[txt] = ""
+        st.session_state[txt] = str(st.session_state[val])
 
     st.text_input(
         label,
         key=txt,
         max_chars=1,
         disabled=disabled,
-        help="0-7",
+        help="0–7",
         on_change=_sync_text_to_int,
         args=(txt, val, min_value, max_value),
         label_visibility="collapsed"
     )
+    
     return int(st.session_state[val])
 
 # --------------------------------------------------------------------------- #
@@ -717,19 +723,12 @@ def main():
                         with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
                         with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-                        # NEW VALIDATION LOGIC
-                        error = False
+                        # TIE VALIDATION (real-time)
                         if live1 == live2 and live1 != 0:
                             st.error("Ties are not allowed!")
-                            error = True
-                        if live1 > 7 or live2 > 7:
-                            st.error("Score must be ≤ 7!")
-                            error = True
 
                         with stat:
-                            if error:
-                                st.write("INVALID")
-                            elif live1 == live2 == 0:
+                            if live1 == live2 == 0:
                                 st.write("–")
                             else:
                                 winner = "P1" if live1 > live2 else "P2"
