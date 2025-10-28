@@ -227,7 +227,7 @@ class SwissTournament:
                     self.games_played[p1.id] += 1
                     self.games_played[best_p2.id] += 1
                     self.planned_games[p1.id] += 1
-                    self.planned_games[p2.id] += 1
+                    self.planned_games[best_p2.id] += 1
                     used.update([p1.id, best_p2.id])
                 else:
                     break
@@ -303,7 +303,7 @@ def save_to_db(tournament, tournament_name):
 
         c.executemany(
             "INSERT INTO players (tournament_id,player_id,name,points,wins,hoops_scored,hoops_conceded,planned_games,played_results) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            [(tid, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoopes_conceded,
+            [(tid, p.id, p.name, p.points, p.wins, p.hoops_scored, p.hoops_conceded,
               tournament.planned_games.get(p.id, 0),
               tournament.games_played_with_result.get(p.id, 0)) for p in tournament.players]
         )
@@ -419,6 +419,49 @@ def load_tournament_data(tournament_id):
         conn.close()
 
 # --------------------------------------------------------------------------- #
+# Single-digit input (0-7) – REAL-TIME VALIDATION + ERROR
+# --------------------------------------------------------------------------- #
+def _sync_text_to_int(text_key, int_key, mn, mx):
+    raw = st.session_state.get(text_key, "")
+    if isinstance(raw, str):
+        raw = raw.strip()
+    if raw == "":
+        st.session_state[int_key] = 0
+        return
+    try:
+        v = int(raw)
+        if v < mn or v > mx:
+            st.session_state[int_key] = max(mn, min(mx, v))  # clamp
+            st.error(f"Score must be between {mn} and {mx}!")
+        else:
+            st.session_state[int_key] = v
+    except ValueError:
+        st.session_state[int_key] = 0
+        st.error("Enter a number (0–7)")
+
+def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False):
+    txt = f"{key}_txt"
+    val = f"{key}_val"
+    
+    if val not in st.session_state:
+        st.session_state[val] = 0
+    if txt not in st.session_state:
+        st.session_state[txt] = str(st.session_state[val])
+
+    st.text_input(
+        label,
+        key=txt,
+        max_chars=1,
+        disabled=disabled,
+        help="0–7",
+        on_change=_sync_text_to_int,
+        args=(txt, val, min_value, max_value),
+        label_visibility="collapsed"
+    )
+    
+    return int(st.session_state[val])
+
+# --------------------------------------------------------------------------- #
 # UI helpers
 # --------------------------------------------------------------------------- #
 def load_selected_tournament(tid):
@@ -451,7 +494,7 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # MOBILE-FRIENDLY NATIVE TABLE
+    # TIGHT LAYOUT + FULL TOURNAMENT NAME + FIX FORM INPUTS
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
@@ -459,19 +502,28 @@ def main():
             padding-top: 4rem !important;
             padding-bottom: 0.8rem !important;
         }
-
-        /* FORM & INPUTS */
         div[data-testid="stForm"] {
-            padding: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
             margin-top: 0 !important;
         }
+        div[data-testid="stForm"] > div > div {
+            padding-top: 0 !important;
+        }
+        div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            font-size: 1rem !important;
+        }
         div[data-testid="stForm"] div[data-testid="stTextInput"] input {
+            margin-top: 0.2rem !important;
             height: 2.8rem !important;
         }
 
-        /* TOURNAMENT NAME */
+        /* TOURNAMENT NAME: FULL WIDTH, NO CUT-OFF */
         div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
             width: 100% !important;
+            min-width: 100% !important;
             background-color: white !important;
             color: black !important;
         }
@@ -480,38 +532,55 @@ def main():
             color: white !important;
         }
 
-        /* IN-TABLE INPUTS */
-        div[data-testid="stTextInput"] input {
-            font-size: 1.3rem !important;
-            font-weight: bold !important;
-            text-align: center !important;
-            padding: 0 4px !important;
-            height: 36px !important;
-            width: 50px !important;
-            max-width: 50px !important;
+        /* SCORE INPUTS – 160px */
+        div[data-testid="stTextInput"] input:not([aria-label=""]) {
+            font-size: 1.8rem !important;
+            padding: 10px !important;
+            height: 3.0rem !important;
+            text-align: center;
+            min-width: 160px !important;
+            width: 160px !important;
+            background-color: white !important;
+            color: black !important;
+        }
+        .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
+            background-color: #333 !important;
+            color: white !important;
         }
 
-        /* MOBILE: HORIZONTAL SCROLL */
-        .scroll-table {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            margin: 0.5rem 0;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 0.5rem;
-            background: #fafafa;
+        .player-name {
+            display: flex;
+            align-items: center;
+            height: 3.0rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-left: 2px;
         }
-        .scroll-table > div {
-            min-width: 600px;
+        .result-metric {
+            min-width: 90px !important;
+            text-align: center;
+            font-size: 1.0rem !important;
         }
-
-        /* COLUMNS IN TABLE */
-        .stColumns > div {
-            padding: 2px 4px !important;
+        .result-metric > div {
+            height: 3.0rem !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
-
         .stExpander > div > div > div {
-            padding: 0.2rem !important;
+            padding-top: 0.2rem !important;
+            padding-bottom: 0.2rem !important;
+        }
+        .stColumns > div {
+            padding-left: 0.1rem !important;
+            padding-right: 0.1rem !important;
+        }
+        .stColumns > div > div {
+            margin: 0 !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -591,6 +660,7 @@ def main():
     with st.expander("Create / Setup Tournament", expanded=expander_open):
         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
         with st.form("setup_form"):
+            # FULL WIDTH TOURNAMENT NAME
             st.session_state.tournament_name = st.text_input(
                 "Tournament name",
                 value=st.session_state.tournament_name,
@@ -622,7 +692,7 @@ def main():
                             del st.session_state[k]
                     st.session_state.tournament = SwissTournament(new_players, st.session_state.num_rounds)
                     st.session_state.loaded_id = None
-                    st.success("Tournament ready – enter scores in table")
+                    st.success("Tournament ready – scroll down to enter scores")
                     st.rerun()
 
     # --- Active tournament ---
@@ -646,7 +716,7 @@ def main():
                     st.session_state[f"{k2}_val"] = v2
                 score_keys.append((r, m, k1, k2))
 
-    # --- Render rounds (NATIVE, MOBILE-FRIENDLY) ---
+    # --- Render rounds (4 per row) ---
     st.subheader("Rounds")
     for r in range(tournament.num_rounds):
         pairings = tournament.get_round_pairings(r)
@@ -654,60 +724,33 @@ def main():
         complete = all(sum(m.get_scores()) > 0 for m in real_matches)
         label = f"Round {r+1} – {len(real_matches)} matches"
         with st.expander(label, expanded=not complete):
-            st.markdown('<div class="scroll-table">', unsafe_allow_html=True)
+            for i in range(0, len(real_matches), 4):
+                batch = real_matches[i:i+4]
+                cols = st.columns(4)
+                for idx, match in enumerate(batch):
+                    try:
+                        entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
+                        _, _, k1, k2 = entry
+                    except StopIteration:
+                        continue
 
-            # Header
-            h1, h2, h3, h4, h5 = st.columns([0.5, 1.8, 0.6, 0.6, 1.8])
-            with h1: st.markdown("**Match**")
-            with h2: st.markdown("**P1**")
-            with h3: st.markdown("**S1**")
-            with h4: st.markdown("**S2**")
-            with h5: st.markdown("**P2**")
-            st.markdown("---")
+                    with cols[idx]:
+                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+                        with n: st.write(f"**{i+idx+1}**")
+                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+                        with h1: live1 = number_input_simple(k1, label=" ", disabled=locked)
+                        with h2: live2 = number_input_simple(k2, label=" ", disabled=locked)
+                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-            for idx, match in enumerate(real_matches):
-                try:
-                    entry = next(e for e in score_keys if e[0] == r and pairings.index(match) == e[1])
-                    _, _, k1, k2 = entry
-                except StopIteration:
-                    continue
+                        if live1 == live2 and live1 != 0:
+                            st.error("Ties are not allowed!")
 
-                live1 = int(st.session_state.get(f"{k1}_val", 0))
-                live2 = int(st.session_state.get(f"{k2}_val", 0))
-
-                if live1 == live2 and live1 != 0:
-                    st.error(f"Match {idx+1}: Ties not allowed!", icon="Prohibited")
-
-                p1_style = "color:green; font-weight:bold;" if live1 > live2 and live1 > 0 else ""
-                p2_style = "color:green; font-weight:bold;" if live2 > live1 and live2 > 0 else ""
-
-                def make_sync(val_key):
-                    def sync():
-                        raw = st.session_state.get(f"{val_key}_txt", "")
-                        try:
-                            v = int(raw) if raw else 0
-                            if 0 <= v <= 7:
-                                st.session_state[val_key] = v
+                        with stat:
+                            if live1 == live2 == 0:
+                                st.write("–")
                             else:
-                                st.session_state[val_key] = 0
-                        except:
-                            st.session_state[val_key] = 0
-                    return sync
-
-                c1, c2, c3, c4, c5 = st.columns([0.5, 1.8, 0.6, 0.6, 1.8])
-                with c1: st.markdown(f"**{idx+1}**")
-                with c2: st.markdown(f'<span style="{p1_style}">{match.player1.name}</span>', unsafe_allow_html=True)
-                with c3:
-                    st.text_input("", value=str(live1), key=f"{k1}_txt", max_chars=1,
-                                  label_visibility="collapsed", disabled=locked,
-                                  on_change=make_sync(f"{k1}_val"))
-                with c4:
-                    st.text_input("", value=str(live2), key=f"{k2}_txt", max_chars=1,
-                                  label_visibility="collapsed", disabled=locked,
-                                  on_change=make_sync(f"{k2}_val"))
-                with c5: st.markdown(f'<span style="{p2_style}">{match.player2.name}</span>', unsafe_allow_html=True)
-
-            st.markdown('</div>', unsafe_allow_html=True)
+                                winner = "P1" if live1 > live2 else "P2"
+                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
 
         if complete:
             st.success(f"**Round {r+1} complete**")
