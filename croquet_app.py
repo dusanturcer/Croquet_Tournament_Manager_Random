@@ -488,10 +488,16 @@ def main():
     logger.info("App start")
 
     # --------------------------------------------------------------- #
-    # TIGHT LAYOUT + WIDE FIELDS + CLEAN RESULT                     #
+    # TIGHT LAYOUT + WIDE FIELDS + SHOW FULL HEADER                 #
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
+        /* PUSH PAGE DOWN – SHOW FULL STREAMLIT HEADER */
+        .block-container {
+            padding-top: 4rem !important;
+            padding-bottom: 0.8rem !important;
+        }
+
         /* 1. SCORE INPUTS – 160px wide, big font */
         div[data-testid="stTextInput"] input {
             font-size: 1.8rem !important;
@@ -547,10 +553,6 @@ def main():
         .stColumns > div > div {
             margin: 0 !important;
         }
-        .block-container {
-            padding-top: 0.8rem !important;
-            padding-bottom: 0.8rem !important;
-        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -582,7 +584,6 @@ def main():
     # --- Sidebar ---
     with st.sidebar:
         st.header("App Status")
-        # FIXED LINE BELOW
         st.session_state.is_locked = st.radio(
             "Input", ["Unlocked", "Locked"], index=0 if not locked else 1,
             horizontal=True, help="**Locked** disables score entry.",
