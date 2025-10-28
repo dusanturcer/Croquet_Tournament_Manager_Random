@@ -502,18 +502,38 @@ def main():
     st.set_page_config(layout="wide", page_title="Croquet Tournament Manager")
     logger.info("App start")
 
-    # Compact CSS for match cards
+    # --------------------------------------------------------------- #
+    # COMPACT CSS – removes empty space, keeps field size unchanged #
+    # --------------------------------------------------------------- #
     st.markdown("""
     <style>
+        /* Remove huge top/bottom padding from expanders */
         .stExpander > div > div > div {
-            padding-top: 0.5rem !important;
-            padding-bottom: 0.5rem !important;
+            padding-top: 0.3rem !important;
+            padding-bottom: 0.3rem !important;
         }
+
+        /* Tighten the columns that hold each match card */
         .stColumns > div {
-            padding: 0.2rem !important;
+            padding-left: 0.2rem !important;
+            padding-right: 0.2rem !important;
         }
+
+        /* Reduce spacing inside the match-card columns */
+        .stColumns > div > div {
+            margin: 0 !important;
+        }
+
+        /* Keep the metric small but readable */
         .stMetric {
             font-size: 0.9rem !important;
+            margin: 0 !important;
+        }
+
+        /* Optional: make the whole app a bit denser */
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 1rem !important;
         }
     </style>
     """, unsafe_allow_html=True)
