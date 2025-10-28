@@ -727,44 +727,38 @@ def main():
     # --- Score keys ---
     score_keys = []
     for r in range(tournament.num_rounds):
-        for m, match in enumerate(tournament.get_round_pairings(r)):
+        pairings = tournament.get_round_pairings(r)
+        for m, match in enumerate(pairings):
             if match and match.player2:
                 k1 = f"hoops1_r{r}_m{m}"
                 k2 = f"hoops2_r{r}_m{m}"
-                v1, v2 = match.get_scores()
 
-                # --- Only set default if NOT already in session (prevents reset on rerun) ---
+                # --- CRITICAL: Only set default if NOT already in session ---
                 if f"{k1}_val" not in st.session_state:
+                    v1, v2 = match.get_scores()
                     st.session_state[f"{k1}_val"] = v1
-                if f"{k2}_val" not in st.session_state:
                     st.session_state[f"{k2}_val"] = v2
+                # --- Otherwise: KEEP whatever user typed (even if match.result is old) ---
 
                 score_keys.append((r, m, k1, k2))
 
-    # ------------------------------------------------------------------- #
-    # RENDER ROUNDS – **maximum 2 matches per row**
-    # ------------------------------------------------------------------- #
+    # --- Render rounds (2 per row) ---
     st.subheader("Rounds")
 
-    # keep a running counter for the match number across the whole round
     for r in range(tournament.num_rounds):
-        pairings      = tournament.get_round_pairings(r)
-        real_matches  = [m for m in pairings if m and m.player2]
-        complete      = all(sum(m.get_scores()) > 0 for m in real_matches)
-        label         = f"Round {r+1} – {len(real_matches)} matches"
+        pairings = tournament.get_round_pairings(r)
+        real_matches = [m for m in pairings if m and m.player2]
+        complete = all(sum(m.get_scores()) > 0 for m in real_matches)
+        label = f"Round {r+1} – {len(real_matches)} matches"
 
         with st.expander(label, expanded=not complete):
-            match_no = 1                                   # ← sequential number
-            for i in range(0, len(real_matches), 2):       # 2-match batches
+            match_no = 1
+            for i in range(0, len(real_matches), 2):
                 batch = real_matches[i:i+2]
-                cols  = st.columns(2)                     # ← only 2 columns
+                cols = st.columns(2)
 
                 for idx, match in enumerate(batch):
-                    # ----- find the score keys for this exact match -----
-                    entry = next(
-                        (e for e in score_keys if e[0] == r and e[1] == pairings.index(match)),
-                        None
-                    )
+                    entry = next((e for e in score_keys if e[0] == r and e[1] == pairings.index(match)), None)
                     if not entry:
                         continue
                     _, _, k1, k2 = entry
@@ -772,15 +766,25 @@ def main():
                     with cols[idx]:
                         n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
 
-                        with n:   st.write(f"**{match_no}**")
-                        with p1:  st.markdown(
-                            f'<div class="player-name"><strong>{match.player1.name}</strong></div>',
-                            unsafe_allow_html=True)
-                        with h1:  live1 = number_input_simple(k1, label=" ", disabled=locked)
-                        with h2:  live2 = number_input_simple(k2, label=" ", disabled=locked)
-                        with p2:  st.markdown(
-                            f'<div class="player-name"><strong>{match.player2.name}</strong></div>',
-                            unsafe_allow_html=True)
+                        with n: st.write(f"**{match_no}**")
+                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+
+                        with h1:
+                            live1 = number_input_simple(k1, label=" ", disabled=locked)
+                            # Sync to tournament
+                            current1, _ = match.get_scores()
+                            if live1 != current1:
+                                live2 = st.session_state.get(f"{k2}_val", 0)
+                                tournament.record_result(r, pairings.index(match), live1, live2)
+
+                        with h2:
+                            live2 = number_input_simple(k2, label=" ", disabled=locked)
+                            _, current2 = match.get_scores()
+                            if live2 != current2:
+                                live1 = st.session_state.get(f"{k1}_val", 0)
+                                tournament.record_result(r, pairings.index(match), live1, live2)
+
+                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
                         if live1 == live2 and live1 != 0:
                             st.error("Ties are not allowed!")
@@ -790,12 +794,9 @@ def main():
                                 st.write("–")
                             else:
                                 winner = "P1" if live1 > live2 else "P2"
-                                st.markdown(
-                                    f'<div class="result-metric"><strong>{live1}–{live2}</strong>'
-                                    f'<br><small>{winner}</small></div>',
-                                    unsafe_allow_html=True)
+                                st.markdown(f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>', unsafe_allow_html=True)
 
-                    match_no += 1                     # ← next match in the round
+                    match_no += 1
 
         if complete:
             st.success(f"**Round {r+1} complete**")
