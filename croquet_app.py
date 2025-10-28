@@ -591,6 +591,28 @@ def main():
         div.stButton > button:hover {
             background-color: #218838;
         }
+        /* Standard buttons */
+        div.stButton > button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+        }
+
+        /* Buttons on hover */
+        div.stButton > button:hover {
+            background-color: #218838;
+        }
+
+        /* Form submit buttons */
+        form div.stButton > button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+        }
+
+        form div.stButton > button:hover {
+            background-color: #218838;
+        }        
     </style>
     """, unsafe_allow_html=True)
 
