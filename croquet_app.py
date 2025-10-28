@@ -423,34 +423,36 @@ def load_tournament_data(tournament_id):
 # --------------------------------------------------------------------------- #
 def _sync_text_to_int(text_key, int_key, mn, mx):
     raw = st.session_state.get(text_key, "")
-    if isinstance(raw, str):
-        raw = raw.strip()
+    raw = raw.strip()
     if raw == "":
         st.session_state[int_key] = 0
         return
     try:
         v = int(raw)
-        if v < mn or v > mx:
-            st.session_state[int_key] = max(mn, min(mx, v))  # clamp
-            st.error(f"Score must be between {mn} and {mx}!")
-        else:
-            st.session_state[int_key] = v
+        if not (mn <= v <= mx):
+            st.error(f"Score must be {mn}–{mx}")
+            v = max(mn, min(mx, v))
+        st.session_state[int_key] = v
     except ValueError:
+        st.error("Enter a number")
         st.session_state[int_key] = 0
-        st.error("Enter a number (0–7)")
 
 def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False):
     txt = f"{key}_txt"
     val = f"{key}_val"
     
-    # -----------------------------------------------------------------
-    #  NEW: 0 → empty string in the text box
-    # -----------------------------------------------------------------
+    # --- Ensure numeric value exists (0 = no result yet) ---
     if val not in st.session_state:
-        st.session_state[val] = 0                     # internal numeric value
+        st.session_state[val] = 0
+
+    # --- TEXT BOX: show "" ONLY if value is 0 AND we are in a *new* tournament ---
+    #     (loaded tournaments should show 0 if it was saved)
+    show_blank = (st.session_state[val] == 0 and not st.session_state.get("loaded_id"))
     if txt not in st.session_state:
-        # show "" when the numeric value is 0, otherwise the number
-        st.session_state[txt] = "" if st.session_state[val] == 0 else str(st.session_state[val])
+        st.session_state[txt] = "" if show_blank else str(st.session_state[val])
+    # Update in real-time if user types
+    elif st.session_state[val] != 0 and st.session_state[txt] == "":
+        st.session_state[txt] = str(st.session_state[val])
 
     st.text_input(
         label,
@@ -463,7 +465,6 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
         label_visibility="collapsed"
     )
     
-    # return the *numeric* value (0 when the box is empty)
     return int(st.session_state[val])
 
 # --------------------------------------------------------------------------- #
@@ -723,7 +724,7 @@ def main():
     tournament = st.session_state.tournament
     st.header(f"**{st.session_state.tournament_name}**")
 
-    # --- Score keys -------------------------------------------------
+    # --- Score keys ---
     score_keys = []
     for r in range(tournament.num_rounds):
         for m, match in enumerate(tournament.get_round_pairings(r)):
@@ -732,13 +733,11 @@ def main():
                 k2 = f"hoops2_r{r}_m{m}"
                 v1, v2 = match.get_scores()
 
-                # ---- ONLY set defaults when we are *loading* an existing tournament ----
-                if st.session_state.loaded_id:                     # ← loaded from DB
-                    if f"{k1}_val" not in st.session_state:
-                        st.session_state[f"{k1}_val"] = v1
-                    if f"{k2}_val" not in st.session_state:
-                        st.session_state[f"{k2}_val"] = v2
-                # (new tournaments get no default → fields stay empty)
+                # --- Only set default if NOT already in session (prevents reset on rerun) ---
+                if f"{k1}_val" not in st.session_state:
+                    st.session_state[f"{k1}_val"] = v1
+                if f"{k2}_val" not in st.session_state:
+                    st.session_state[f"{k2}_val"] = v2
 
                 score_keys.append((r, m, k1, k2))
 
