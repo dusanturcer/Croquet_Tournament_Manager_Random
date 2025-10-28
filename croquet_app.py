@@ -500,9 +500,118 @@ def main():
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-        .block-container {padding-top: 4rem !important; padding-bottom: 0.8rem !important;}
-        div[data-testid="stForm"] {padding-top: 0 !important; padding-bottom: 0 !important; margin-top: 0 !important;}
-        /* … (the rest of your CSS – keep exactly as you had it) … */
+    .block-container {
+        padding-top: 4rem !important;
+        padding-bottom: 0.8rem !important;
+    }
+
+    div[data-testid="stForm"] {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        margin-top: 0 !important;
+    }
+
+    div[data-testid="stForm"] > div > div {
+        padding-top: 0 !important;
+    }
+
+    div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        font-size: 1rem !important;
+    }
+
+    div[data-testid="stForm"] div[data-testid="stTextInput"] input {
+        margin-top: 0.2rem !important;
+        height: 2.8rem !important;
+    }
+
+    /* TOURNAMENT NAME: FULL WIDTH, NO CUT-OFF */
+    div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
+        width: 100% !important;
+        min-width: 100% !important;
+        background-color: white !important;
+        color: black !important;
+    }
+
+    .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
+        background-color: #262730 !important;
+        color: white !important;
+    }
+
+    /* SCORE INPUTS – 160px */
+    div[data-testid="stTextInput"] input:not([aria-label=""]) {
+        font-size: 1.8rem !important;
+        padding: 10px !important;
+        height: 3.0rem !important;
+        text-align: center;
+        min-width: 160px !important;
+        width: 160px !important;
+        background-color: white !important;
+        color: black !important;
+    }
+
+    .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
+        background-color: #333 !important;
+        color: white !important;
+    }
+
+    .player-name {
+        display: flex;
+        align-items: center;
+        height: 3.0rem;
+        font-size: 1.1rem;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-left: 2px;
+    }
+
+    .result-metric {
+        min-width: 90px !important;
+        text-align: center;
+        font-size: 1.0rem !important;
+    }
+
+    .result-metric > div {
+        height: 3.0rem !important;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .stExpander > div > div > div {
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
+    }
+
+    .stColumns > div {
+        padding-left: 0.1rem !important;
+        padding-right: 0.1rem !important;
+    }
+
+    .stColumns > div > div {
+        margin: 0 !important;
+    }
+
+    /* Make all buttons green, including form buttons */
+    div.stButton > button,
+    form div.stButton > button,
+    button[kind="primaryFormSubmit"],
+    button[kind="secondaryFormSubmit"] {
+        background-color: #28a745 !important;
+        color: white !important;
+        border: none !important;
+    }
+
+    div.stButton > button:hover,
+    form div.stButton > button:hover,
+    button[kind="primaryFormSubmit"]:hover,
+    button[kind="secondaryFormSubmit"]:hover {
+        background-color: #218838 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
