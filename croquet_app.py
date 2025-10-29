@@ -564,25 +564,6 @@ def main():
     div.stButton > button:hover, form div.stButton > button:hover, button[kind="primaryFormSubmit"]:hover, button[kind="secondaryFormSubmit"]:hover {
         background:#218838!important;
     }
-    /* === SCORES: TWO FIELDS SIDE-BY-SIDE IN ONE COLUMN === */
-    div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
-        width: 92px !important;
-        min-width: 92px !important;
-        max-width: 92px !important;
-        flex: 0 0 92px !important;
-        padding: 0 4px !important;
-    }
-
-    /* Hide 1/1 label */
-    div[data-testid="column"] label { display: none !important; }
-
-    /* Mobile: one match per row */
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] > div > div { flex-direction: column !important; }
-        div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
-            width: 100% !important; max-width: none !important; flex: none !important;
-        }
-    }  
     /* === SCORES: TWO FIELDS SIDE-BY-SIDE === */
     div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
         width: 92px !important;
@@ -601,7 +582,7 @@ def main():
         div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
             width: 100% !important; max-width: none !important; flex: none !important;
         }
-    }          
+    }       
     </style>
     """, unsafe_allow_html=True)
 
@@ -767,44 +748,34 @@ def main():
                     cols = st.columns(col_specs, gap="small")
 
                     for idx, match in enumerate(batch):
-                        with cols[idx]:
-                            # === SAME MATCH RENDERING CODE ===
-                            entry = next((e for e in st.session_state.score_keys
-                                         if e[0] == r and e[1] == pairings.index(match)), None)
-                            if not entry:
-                                continue
-                            _, _, k1, k2 = entry
+                        entry = next((e for e in st.session_state.score_keys
+                                    if e[0] == r and e[1] == pairings.index(match)), None)
+                        if not entry:
+                            continue
+                        _, _, k1, k2 = entry
 
-                            live1 = int(st.session_state.get(f"{k1}_val", 0))
-                            live2 = int(st.session_state.get(f"{k2}_val", 0))
+                        live1 = int(st.session_state.get(f"{k1}_val", 0))
+                        live2 = int(st.session_state.get(f"{k2}_val", 0))
 
+                        with cols[idx]:  # from outer st.columns(2)
                             n, p1, scores, p2, stat = st.columns([0.2, 1.1, 0.6, 1.1, 0.7])
 
-                            # === MATCH RENDERING (5 COLUMNS) ===
-                            with n: 
-                                st.write(f"**{match_no}**")
+                            with n: st.write(f"**{match_no}**")
+                            with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
 
-                            with p1: 
-                                st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
-
-                            # === SCORES: TWO FIELDS SIDE-BY-SIDE IN ONE COLUMN ===
-                            with scores:  # ← This is the single column for both scores
-                                score_cols = st.columns([1, 1], gap="small")  # two tiny inputs
-
+                            with scores:
+                                score_cols = st.columns([1, 1])
                                 with score_cols[0]:
                                     new1 = number_input_simple(k1, label=" ", disabled=locked)
                                     if new1 != live1:
                                         tournament.record_result(r, pairings.index(match), new1, live2)
-
                                 with score_cols[1]:
                                     new2 = number_input_simple(k2, label=" ", disabled=locked)
                                     if new2 != live2:
                                         tournament.record_result(r, pairings.index(match), live1, new2)
 
-                            with p2: 
-                                st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+                            with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-                            # === RESULT ===
                             with stat:
                                 if live1 == live2 == 0:
                                     st.write("–")
@@ -814,8 +785,7 @@ def main():
                                         f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
                                         unsafe_allow_html=True
                                     )
-                            # === END MATCH RENDERING ===
-                    match_no += 1
+                        match_no += 1
 
         if complete:
             st.success(f"**Round {r+1} complete**")
