@@ -500,119 +500,69 @@ def main():
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-    .block-container {
-        padding-top: 4rem !important;
-        padding-bottom: 0.8rem !important;
-    }
-
-    /* FORM CLEANUP */
-    div[data-testid="stForm"] {padding:0!important;margin-top:0!important;}
-    div[data-testid="stForm"] > div > div {padding-top:0!important;}
-    div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
-        margin-top:0!important;padding-top:0!important;font-size:1rem!important;
-    }
-    div[data-testid="stForm"] div[data-testid="stTextInput"] input {
-        margin-top:0.2rem!important;height:2.8rem!important;
-    }
-
-    /* TOURNAMENT NAME – full width */
-    div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
-        width:100%!important;min-width:100%!important;
-        background-color:white!important;color:black!important;
-    }
-    .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
-        background-color:#262730!important;color:white!important;
-    }
-
-    /* SCORE INPUTS – NARROW */
-    div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        font-size:1.6rem!important;
-        padding:6px 2px!important;
-        height:2.8rem!important;
-        text-align:center;
-        min-width:38px!important;
-        width:38px!important;
-        background-color:white!important;
-        color:black!important;
-        border-radius:4px!important;
-        border:1px solid #ccc!important;
-    }
-    .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        background-color:#333!important;
-        color:white!important;
-        border:1px solid #555!important;
-    }
-
-    .player-name {
-        display:flex;align-items:center;height:3.0rem;
-        font-size:1.1rem;font-weight:600;
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-        padding-left:2px;
-    }
-    .result-metric {min-width:90px!important;text-align:center;font-size:1.0rem!important;}
-    .result-metric > div {height:3.0rem!important;display:flex;flex-direction:column;justify-content:center;align-items:center;}
-    .stExpander > div > div > div {padding:0.2rem 0!important;}
-    .stColumns > div {padding:0 0.1rem!important;}
-    .stColumns > div > div {margin:0!important;}
-
-    /* === FIX 1: HIDE 1/1 LABEL === */
-    div[data-testid="column"] > div > div > div > label {
+    /* === 1. HIDE 1/1 COLUMN LABELS === */
+    div[data-testid="column"] label {
         display: none !important;
     }
 
-    /* === FIX 2: SHRINK SCORE COLUMNS TO FIT INPUT === */
-    /* Target the exact div that wraps st.text_input */
-    div[data-testid="column"] > div > div > div > div[data-testid="stTextInput"] {
-        width: 38px !important;
-        min-width: 38px !important;
-        flex: 0 0 38px !important;
-        padding: 0 3px !important;
-    }
-
-    /* Ensure the column itself doesn't grow */
-    div[data-testid="column"]:has(> div > div > div > div[data-testid="stTextInput"]) {
-        width: auto !important;
-        min-width: 44px !important;
-        flex: 0 0 auto !important;
+    /* === 2. SHRINK SCORE COLUMNS TO EXACTLY FIT INPUT === */
+    /* Target the column that contains a score input */
+    div[data-testid="column"]:has(div[data-testid="stTextInput"] input:not([aria-label=""])) {
+        width: 46px !important;     /* 38px input + 4px padding each side */
+        min-width: 46px !important;
+        max-width: 46px !important;
+        flex: 0 0 46px !important;
         padding: 0 4px !important;
     }
 
-    /* Green buttons */
-    div.stButton > button,
-    form div.stButton > button,
-    button[kind="primaryFormSubmit"],
-    button[kind="secondaryFormSubmit"] {
-        background-color:#28a745!important;color:white!important;border:none!important;
+    /* === 3. NARROW INPUT (white box) === */
+    div[data-testid="stTextInput"] input:not([aria-label=""]) {
+        width: 38px !important;
+        min-width: 38px !important;
+        max-width: 38px !important;
+        padding: 6px 2px !important;
+        font-size: 1.6rem !important;
+        text-align: center;
+        background: white !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+        border-radius: 4px !important;
     }
-    div.stButton > button:hover,
-    form div.stButton > button:hover,
-    button[kind="primaryFormSubmit"]:hover,
-    button[kind="secondaryFormSubmit"]:hover {
-        background-color:#218838!important;
+    .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
+        background: #333 !important;
+        color: white !important;
+        border-color: #555 !important;
     }
 
-    /* === MOBILE: ONE MATCH PER ROW === */
+    /* === 4. MOBILE: ONE MATCH PER ROW === */
     @media (max-width: 768px) {
         div[data-testid="stHorizontalBlock"] > div > div {
             flex-direction: column !important;
         }
-        div[data-testid="column"] {
+        div[data-testid="column"]:has(div[data-testid="stTextInput"]) {
             width: 100% !important;
-            min-width: 100% !important;
-            padding: 0.2rem !important;
+            max-width: none !important;
+            flex: none !important;
         }
-        .player-name {
-            white-space: normal !important;
-            font-size: 1.0rem !important;
-            padding: 4px 0 !important;
-        }
-        div[data-testid="stTextInput"] input:not([aria-label=""]) {
-            min-width: 40px !important;
-        }
-        .result-metric {min-width: 70px !important;}
     }
-    .st-d2 {
-    width: 10%;
+
+    /* === 5. REST OF YOUR ORIGINAL STYLES (keep them) === */
+    .block-container {padding:4rem 0 0.8rem!important;}
+    div[data-testid="stForm"] {padding:0!important;margin-top:0!important;}
+    div[data-testid="stForm"] > div > div {padding-top:0!important;}
+    div[data-testid="stForm"] div[data-testid="stTextInput"] input {margin-top:0.2rem!important;height:2.8rem!important;}
+    div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {width:100%!important;min-width:100%!important;background:white!important;color:black!important;}
+    .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {background:#262730!important;color:white!important;}
+    .player-name {display:flex;align-items:center;height:3rem;font-size:1.1rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px;}
+    .result-metric {min-width:90px!important;text-align:center;font-size:1rem!important;}
+    .result-metric > div {height:3rem!important;display:flex;flex-direction:column;justify-content:center;align-items:center;}
+    .stExpander > div > div > div {padding:0.2rem 0!important;}
+    .stColumns > div {padding:0 0.1rem!important;}
+    div.stButton > button, form div.stButton > button, button[kind="primaryFormSubmit"], button[kind="secondaryFormSubmit"] {
+        background:#28a745!important;color:white!important;border:none!important;
+    }
+    div.stButton > button:hover, form div.stButton > button:hover, button[kind="primaryFormSubmit"]:hover, button[kind="secondaryFormSubmit"]:hover {
+        background:#218838!important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -790,7 +740,7 @@ def main():
                             live1 = int(st.session_state.get(f"{k1}_val", 0))
                             live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                            n, p1, h1, h2, p2, stat = st.columns([0.2, 1, 0.1, 0.1, 1, 0.6])
+                            n, p1, h1, h2, p2, stat = st.columns([1, 3, 1, 1, 3, 2])
 
                             with n: st.write(f"**{match_no}**")
                             with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
