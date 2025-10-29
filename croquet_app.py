@@ -455,7 +455,7 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
         key=txt,
         max_chars=1,
         disabled=disabled,
-        help="0–7",
+        # help="0–7",   ← REMOVED
         on_change=_sync_text_to_int,
         args=(txt, val, min_value, max_value),
         label_visibility="collapsed"
