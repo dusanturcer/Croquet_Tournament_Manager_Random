@@ -523,20 +523,23 @@ def main():
         background-color:#262730!important;color:white!important;
     }
 
-    /* SCORE INPUTS – compact, flexible width */
+    /* SCORE INPUTS – NARROW & CLEAN */
     div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        font-size:1.8rem!important;
-        padding:8px 4px!important;
-        height:3.0rem!important;
-        text-align:center;
-        min-width:50px!important;
-        width:auto!important;
-        background-color:white!important;
-        color:black!important;
+        font-size: 1.6rem !important;
+        padding: 6px 2px !important;
+        height: 2.8rem !important;
+        text-align: center;
+        min-width: 38px !important;
+        width: 38px !important;
+        background-color: white !important;
+        color: black !important;
+        border-radius: 4px !important;
+        border: 1px solid #ccc !important;
     }
     .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        background-color:#333!important;
-        color:white!important;
+        background-color: #333 !important;
+        color: white !important;
+        border: 1px solid #555 !important;
     }
 
     .player-name {
