@@ -455,7 +455,7 @@ def number_input_simple(key, min_value=0, max_value=7, label=" ", disabled=False
         key=txt,
         max_chars=1,
         disabled=disabled,
-        # help="0–7",   ← REMOVED
+        help="0–7",
         on_change=_sync_text_to_int,
         args=(txt, val, min_value, max_value),
         label_visibility="collapsed"
@@ -500,89 +500,70 @@ def main():
     # --------------------------------------------------------------- #
     st.markdown("""
     <style>
-    /* === 1. HIDE 1/1 COLUMN LABELS === */
-    div[data-testid="column"] label {
-        display: none !important;
+    .block-container {
+        padding-top: 4rem !important;
+        padding-bottom: 0.8rem !important;
     }
 
-    /* === 2. SHRINK SCORE COLUMNS TO EXACTLY FIT INPUT === */
-    /* Target the column that contains a score input */
-    div[data-testid="column"]:has(div[data-testid="stTextInput"] input:not([aria-label=""])) {
-        width: 46px !important;     /* 38px input + 4px padding each side */
-        min-width: 46px !important;
-        max-width: 46px !important;
-        flex: 0 0 46px !important;
-        padding: 0 4px !important;
+    div[data-testid="stForm"] {padding-top:0!important;padding-bottom:0!important;margin-top:0!important;}
+    div[data-testid="stForm"] > div > div {padding-top:0!important;}
+    div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
+        margin-top:0!important;padding-top:0!important;font-size:1rem!important;
+    }
+    div[data-testid="stForm"] div[data-testid="stTextInput"] input {
+        margin-top:0.2rem!important;height:2.8rem!important;
     }
 
-    /* === 3. NARROW INPUT (white box) === */
+    /* TOURNAMENT NAME – full width */
+    div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
+        width:100%!important;min-width:100%!important;
+        background-color:white!important;color:black!important;
+    }
+    .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {
+        background-color:#262730!important;color:white!important;
+    }
+
+    /* SCORE INPUTS – compact, flexible width */
     div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        width: 38px !important;
-        min-width: 38px !important;
-        max-width: 38px !important;
-        padding: 6px 2px !important;
-        font-size: 1.6rem !important;
-        text-align: center;
-        background: white !important;
-        color: black !important;
-        border: 1px solid #ccc !important;
-        border-radius: 4px !important;
+        font-size:1.8rem!important;
+        padding:8px 4px!important;
+        height:3.0rem!important;
+        text-align:center;
+        min-width:50px!important;
+        width:auto!important;
+        background-color:white!important;
+        color:black!important;
     }
     .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        background: #333 !important;
-        color: white !important;
-        border-color: #555 !important;
+        background-color:#333!important;
+        color:white!important;
     }
 
-    /* === 4. MOBILE: ONE MATCH PER ROW === */
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] > div > div {
-            flex-direction: column !important;
-        }
-        div[data-testid="column"]:has(div[data-testid="stTextInput"]) {
-            width: 100% !important;
-            max-width: none !important;
-            flex: none !important;
-        }
+    .player-name {
+        display:flex;align-items:center;height:3.0rem;
+        font-size:1.1rem;font-weight:600;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        padding-left:2px;
     }
-
-    /* === 5. REST OF YOUR ORIGINAL STYLES (keep them) === */
-    .block-container {padding:4rem 0 0.8rem!important;}
-    div[data-testid="stForm"] {padding:0!important;margin-top:0!important;}
-    div[data-testid="stForm"] > div > div {padding-top:0!important;}
-    div[data-testid="stForm"] div[data-testid="stTextInput"] input {margin-top:0.2rem!important;height:2.8rem!important;}
-    div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {width:100%!important;min-width:100%!important;background:white!important;color:black!important;}
-    .stApp[data-theme="dark"] div[data-testid="stForm"] div[data-testid="stTextInput"]:first-of-type input {background:#262730!important;color:white!important;}
-    .player-name {display:flex;align-items:center;height:3rem;font-size:1.1rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:2px;}
-    .result-metric {min-width:90px!important;text-align:center;font-size:1rem!important;}
-    .result-metric > div {height:3rem!important;display:flex;flex-direction:column;justify-content:center;align-items:center;}
+    .result-metric {min-width:90px!important;text-align:center;font-size:1.0rem!important;}
+    .result-metric > div {height:3.0rem!important;display:flex;flex-direction:column;justify-content:center;align-items:center;}
     .stExpander > div > div > div {padding:0.2rem 0!important;}
     .stColumns > div {padding:0 0.1rem!important;}
-    div.stButton > button, form div.stButton > button, button[kind="primaryFormSubmit"], button[kind="secondaryFormSubmit"] {
-        background:#28a745!important;color:white!important;border:none!important;
-    }
-    div.stButton > button:hover, form div.stButton > button:hover, button[kind="primaryFormSubmit"]:hover, button[kind="secondaryFormSubmit"]:hover {
-        background:#218838!important;
-    }
-    /* === SCORES: TWO FIELDS SIDE-BY-SIDE === */
-    div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
-        width: 92px !important;
-        min-width: 92px !important;
-        max-width: 92px !important;
-        flex: 0 0 92px !important;
-        padding: 0 4px !important;
-    }
+    .stColumns > div > div {margin:0!important;}
 
-    /* Hide 1/1 labels */
-    div[data-testid="column"] label { display: none !important; }
-
-    /* Mobile: one match per row */
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] > div > div { flex-direction: column !important; }
-        div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
-            width: 100% !important; max-width: none !important; flex: none !important;
-        }
-    }       
+    /* Green buttons */
+    div.stButton > button,
+    form div.stButton > button,
+    button[kind="primaryFormSubmit"],
+    button[kind="secondaryFormSubmit"] {
+        background-color:#28a745!important;color:white!important;border:none!important;
+    }
+    div.stButton > button:hover,
+    form div.stButton > button:hover,
+    button[kind="primaryFormSubmit"]:hover,
+    button[kind="secondaryFormSubmit"]:hover {
+        background-color:#218838!important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -740,52 +721,49 @@ def main():
             match_no = 1
             for i in range(0, len(real_matches), 2):
                 batch = real_matches[i:i+2]
+                cols = st.columns(2)
 
-                # Use container + dynamic columns for mobile/desktop
-                with st.container():
-                    # On mobile: 1 column, on desktop: 2 columns
-                    col_specs = [1] if len(batch) == 1 else [1, 1]
-                    cols = st.columns(col_specs, gap="small")
+                for idx, match in enumerate(batch):
+                    entry = next((e for e in st.session_state.score_keys
+                                 if e[0] == r and e[1] == pairings.index(match)), None)
+                    if not entry:
+                        continue
+                    _, _, k1, k2 = entry
 
-                    for idx, match in enumerate(batch):
-                        entry = next((e for e in st.session_state.score_keys
-                                    if e[0] == r and e[1] == pairings.index(match)), None)
-                        if not entry:
-                            continue
-                        _, _, k1, k2 = entry
+                    live1 = int(st.session_state.get(f"{k1}_val", 0))
+                    live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                        live1 = int(st.session_state.get(f"{k1}_val", 0))
-                        live2 = int(st.session_state.get(f"{k2}_val", 0))
+                    with cols[idx]:
+                        n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
 
-                        with cols[idx]:  # from outer st.columns(2)
-                            n, p1, scores, p2, stat = st.columns([0.2, 1.1, 0.6, 1.1, 0.7])
+                        with n: st.write(f"**{match_no}**")
+                        with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
 
-                            with n: st.write(f"**{match_no}**")
-                            with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+                        with h1:
+                            new1 = number_input_simple(k1, label=" ", disabled=locked)
+                            if new1 != live1:
+                                tournament.record_result(r, pairings.index(match), new1, live2)
 
-                            with scores:
-                                score_cols = st.columns([1, 1])
-                                with score_cols[0]:
-                                    new1 = number_input_simple(k1, label=" ", disabled=locked)
-                                    if new1 != live1:
-                                        tournament.record_result(r, pairings.index(match), new1, live2)
-                                with score_cols[1]:
-                                    new2 = number_input_simple(k2, label=" ", disabled=locked)
-                                    if new2 != live2:
-                                        tournament.record_result(r, pairings.index(match), live1, new2)
+                        with h2:
+                            new2 = number_input_simple(k2, label=" ", disabled=locked)
+                            if new2 != live2:
+                                tournament.record_result(r, pairings.index(match), live1, new2)
 
-                            with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+                        with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-                            with stat:
-                                if live1 == live2 == 0:
-                                    st.write("–")
-                                else:
-                                    winner = "P1" if live1 > live2 else "P2"
-                                    st.markdown(
-                                        f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
-                                        unsafe_allow_html=True
-                                    )
-                        match_no += 1
+                        if live1 == live2 and live1 != 0:
+                            st.error("Ties are not allowed!")
+
+                        with stat:
+                            if live1 == live2 == 0:
+                                st.write("–")
+                            else:
+                                winner = "P1" if live1 > live2 else "P2"
+                                st.markdown(
+                                    f'<div class="result-metric"><strong>{live1}–{live2}</strong><br><small>{winner}</small></div>',
+                                    unsafe_allow_html=True
+                                )
+                    match_no += 1
 
         if complete:
             st.success(f"**Round {r+1} complete**")
