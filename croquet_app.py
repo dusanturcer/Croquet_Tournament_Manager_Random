@@ -611,6 +611,9 @@ def main():
         }
         .result-metric {min-width: 70px !important;}
     }
+    .st-d2 {
+    width: 10%;
+    }
     </style>
     """, unsafe_allow_html=True)
 
