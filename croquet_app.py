@@ -601,7 +601,13 @@ def main():
         .result-metric {
             min-width: 70px !important;
         }
-    }            
+    }  
+    /* MAKE SCORE COLUMNS HUG THEIR CONTENT */
+    div[data-testid="column"]:has(div[data-testid="stTextInput"] input:not([aria-label=""])) {
+        width: auto !important;
+        min-width: 44px !important;   /* 38px input + 3px padding on each side */
+        flex: 0 0 auto !important;
+        padding: 0 4px !important;          
     </style>
     """, unsafe_allow_html=True)
 
@@ -778,7 +784,7 @@ def main():
                             live1 = int(st.session_state.get(f"{k1}_val", 0))
                             live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                            n, p1, h1, h2, p2, stat = st.columns([0.3, 1.2, 0.6, 0.6, 1.2, 0.9])
+                            n, p1, h1, h2, p2, stat = st.columns([0.2, 0.9, 0.4, 0.4, 0.9, 0.6])
 
                             with n: st.write(f"**{match_no}**")
                             with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
