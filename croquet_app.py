@@ -577,8 +577,6 @@ def main():
 
         /* Each match column takes full width */
         div[data-testid="column"] {
-            width: 100% !important;
-            min-width: 100% !important;
             padding-left: 0.2rem !important;
             padding-right: 0.2rem !important;
         }
