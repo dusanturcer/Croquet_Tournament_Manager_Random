@@ -505,6 +505,7 @@ def main():
         padding-bottom: 0.8rem !important;
     }
 
+    /* FORM CLEANUP */
     div[data-testid="stForm"] {padding:0!important;margin-top:0!important;}
     div[data-testid="stForm"] > div > div {padding-top:0!important;}
     div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
@@ -523,7 +524,7 @@ def main():
         background-color:#262730!important;color:white!important;
     }
 
-    /* SCORE INPUTS – NARROW & CLEAN */
+    /* SCORE INPUTS – NARROW */
     div[data-testid="stTextInput"] input:not([aria-label=""]) {
         font-size:1.6rem!important;
         padding:6px 2px!important;
@@ -554,13 +555,22 @@ def main():
     .stColumns > div {padding:0 0.1rem!important;}
     .stColumns > div > div {margin:0!important;}
 
-    /* HIDE COLUMN FRACTION LABELS (1/1, 1/2, etc.) */
+    /* === FIX 1: HIDE 1/1 LABEL === */
     div[data-testid="column"] > div > div > div > label {
         display: none !important;
     }
 
-    /* SHRINK SCORE COLUMNS TO FIT INPUT */
+    /* === FIX 2: SHRINK SCORE COLUMNS TO FIT INPUT === */
+    /* Target the exact div that wraps st.text_input */
     div[data-testid="column"] > div > div > div > div[data-testid="stTextInput"] {
+        width: 38px !important;
+        min-width: 38px !important;
+        flex: 0 0 38px !important;
+        padding: 0 3px !important;
+    }
+
+    /* Ensure the column itself doesn't grow */
+    div[data-testid="column"]:has(> div > div > div > div[data-testid="stTextInput"]) {
         width: auto !important;
         min-width: 44px !important;
         flex: 0 0 auto !important;
@@ -581,11 +591,10 @@ def main():
         background-color:#218838!important;
     }
 
-    /* MOBILE: ONE MATCH PER ROW */
+    /* === MOBILE: ONE MATCH PER ROW === */
     @media (max-width: 768px) {
         div[data-testid="stHorizontalBlock"] > div > div {
             flex-direction: column !important;
-            width: 100% !important;
         }
         div[data-testid="column"] {
             width: 100% !important;
@@ -598,9 +607,7 @@ def main():
             padding: 4px 0 !important;
         }
         div[data-testid="stTextInput"] input:not([aria-label=""]) {
-            font-size: 1.6rem !important;
             min-width: 40px !important;
-            padding: 6px 2px !important;
         }
         .result-metric {min-width: 70px !important;}
     }
@@ -780,7 +787,7 @@ def main():
                             live1 = int(st.session_state.get(f"{k1}_val", 0))
                             live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                            n, p1, h1, h2, p2, stat = st.columns([0.2, 0.9, 0.4, 0.4, 0.9, 0.6])
+                            n, p1, h1, h2, p2, stat = st.columns([0.2, 1, 0.1, 0.1, 1, 0.6])
 
                             with n: st.write(f"**{match_no}**")
                             with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
