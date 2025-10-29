@@ -564,6 +564,25 @@ def main():
     div.stButton > button:hover, form div.stButton > button:hover, button[kind="primaryFormSubmit"]:hover, button[kind="secondaryFormSubmit"]:hover {
         background:#218838!important;
     }
+    /* === SCORES: TWO FIELDS SIDE-BY-SIDE IN ONE COLUMN === */
+    div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
+        width: 92px !important;
+        min-width: 92px !important;
+        max-width: 92px !important;
+        flex: 0 0 92px !important;
+        padding: 0 4px !important;
+    }
+
+    /* Hide 1/1 label */
+    div[data-testid="column"] label { display: none !important; }
+
+    /* Mobile: one match per row */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] > div > div { flex-direction: column !important; }
+        div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
+            width: 100% !important; max-width: none !important; flex: none !important;
+        }
+    }            
     </style>
     """, unsafe_allow_html=True)
 
@@ -740,20 +759,23 @@ def main():
                             live1 = int(st.session_state.get(f"{k1}_val", 0))
                             live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                            n, p1, h1, h2, p2, stat = st.columns([1, 3, 1, 1, 3, 2])
+                            n, p1, scores, p2, stat = st.columns([0.2, 1.1, 0.5, 1.1, 0.7])
 
                             with n: st.write(f"**{match_no}**")
                             with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
 
-                            with h1:
-                                new1 = number_input_simple(k1, label=" ", disabled=locked)
-                                if new1 != live1:
-                                    tournament.record_result(r, pairings.index(match), new1, live2)
+                            with h1:  # reuse h1 as container
+                                score_cols = st.columns([1, 1], gap="small")  # two tiny columns
 
-                            with h2:
-                                new2 = number_input_simple(k2, label=" ", disabled=locked)
-                                if new2 != live2:
-                                    tournament.record_result(r, pairings.index(match), live1, new2)
+                                with score_cols[0]:
+                                    new1 = number_input_simple(k1, label=" ", disabled=locked)
+                                    if new1 != live1:
+                                        tournament.record_result(r, pairings.index(match), new1, live2)
+
+                                with score_cols[1]:
+                                    new2 = number_input_simple(k2, label=" ", disabled=locked)
+                                    if new2 != live2:
+                                        tournament.record_result(r, pairings.index(match), live1, new2)
 
                             with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
