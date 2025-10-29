@@ -505,7 +505,7 @@ def main():
         padding-bottom: 0.8rem !important;
     }
 
-    div[data-testid="stForm"] {padding-top:0!important;padding-bottom:0!important;margin-top:0!important;}
+    div[data-testid="stForm"] {padding:0!important;margin-top:0!important;}
     div[data-testid="stForm"] > div > div {padding-top:0!important;}
     div[data-testid="stForm"] div[data-testid="stTextInput"] > label {
         margin-top:0!important;padding-top:0!important;font-size:1rem!important;
@@ -525,21 +525,21 @@ def main():
 
     /* SCORE INPUTS – NARROW & CLEAN */
     div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        font-size: 1.6rem !important;
-        padding: 6px 2px !important;
-        height: 2.8rem !important;
-        text-align: center;
-        min-width: 38px !important;
-        width: 38px !important;
-        background-color: white !important;
-        color: black !important;
-        border-radius: 4px !important;
-        border: 1px solid #ccc !important;
+        font-size:1.6rem!important;
+        padding:6px 2px!important;
+        height:2.8rem!important;
+        text-align:center;
+        min-width:38px!important;
+        width:38px!important;
+        background-color:white!important;
+        color:black!important;
+        border-radius:4px!important;
+        border:1px solid #ccc!important;
     }
     .stApp[data-theme="dark"] div[data-testid="stTextInput"] input:not([aria-label=""]) {
-        background-color: #333 !important;
-        color: white !important;
-        border: 1px solid #555 !important;
+        background-color:#333!important;
+        color:white!important;
+        border:1px solid #555!important;
     }
 
     .player-name {
@@ -554,6 +554,19 @@ def main():
     .stColumns > div {padding:0 0.1rem!important;}
     .stColumns > div > div {margin:0!important;}
 
+    /* HIDE COLUMN FRACTION LABELS (1/1, 1/2, etc.) */
+    div[data-testid="column"] > div > div > div > label {
+        display: none !important;
+    }
+
+    /* SHRINK SCORE COLUMNS TO FIT INPUT */
+    div[data-testid="column"] > div > div > div > div[data-testid="stTextInput"] {
+        width: auto !important;
+        min-width: 44px !important;
+        flex: 0 0 auto !important;
+        padding: 0 4px !important;
+    }
+
     /* Green buttons */
     div.stButton > button,
     form div.stButton > button,
@@ -567,45 +580,30 @@ def main():
     button[kind="secondaryFormSubmit"]:hover {
         background-color:#218838!important;
     }
+
     /* MOBILE: ONE MATCH PER ROW */
     @media (max-width: 768px) {
-        /* Force the outer "2-column" container to become a single column */
         div[data-testid="stHorizontalBlock"] > div > div {
-    materias        flex-direction: column !important;
+            flex-direction: column !important;
             width: 100% !important;
         }
-
-        /* Each match column takes full width */
         div[data-testid="column"] {
-            padding-left: 0.2rem !important;
-            padding-right: 0.2rem !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            padding: 0.2rem !important;
         }
-
-        /* Make player names wrap nicely */
         .player-name {
             white-space: normal !important;
             font-size: 1.0rem !important;
             padding: 4px 0 !important;
         }
-
-        /* Score inputs – a bit smaller on mobile */
         div[data-testid="stTextInput"] input:not([aria-label=""]) {
             font-size: 1.6rem !important;
-            min-width: 44px !important;
+            min-width: 40px !important;
             padding: 6px 2px !important;
         }
-
-        /* Result metric – full width */
-        .result-metric {
-            min-width: 70px !important;
-        }
-    }  
-    /* MAKE SCORE COLUMNS HUG THEIR CONTENT */
-    div[data-testid="column"]:has(div[data-testid="stTextInput"] input:not([aria-label=""])) {
-        width: auto !important;
-        min-width: 44px !important;   /* 38px input + 3px padding on each side */
-        flex: 0 0 auto !important;
-        padding: 0 4px !important;          
+        .result-metric {min-width: 70px !important;}
+    }
     </style>
     """, unsafe_allow_html=True)
 
