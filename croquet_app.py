@@ -759,7 +759,7 @@ def main():
                             live1 = int(st.session_state.get(f"{k1}_val", 0))
                             live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                            n, p1, scores, p2, stat = st.columns([0.2, 1.1, 0.5, 1.1, 0.7])
+                            n, p1, scores, p2, stat = st.columns([0.2, 1.1, 1, 1.1, 0.7])
 
                             with n: st.write(f"**{match_no}**")
                             with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
