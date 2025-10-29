@@ -582,7 +582,26 @@ def main():
         div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
             width: 100% !important; max-width: none !important; flex: none !important;
         }
-    }            
+    }  
+    /* === SCORES: TWO FIELDS SIDE-BY-SIDE === */
+    div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
+        width: 92px !important;
+        min-width: 92px !important;
+        max-width: 92px !important;
+        flex: 0 0 92px !important;
+        padding: 0 4px !important;
+    }
+
+    /* Hide 1/1 labels */
+    div[data-testid="column"] label { display: none !important; }
+
+    /* Mobile: one match per row */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] > div > div { flex-direction: column !important; }
+        div[data-testid="column"]:has(div[data-testid="stHorizontalBlock"]) {
+            width: 100% !important; max-width: none !important; flex: none !important;
+        }
+    }          
     </style>
     """, unsafe_allow_html=True)
 
@@ -759,13 +778,18 @@ def main():
                             live1 = int(st.session_state.get(f"{k1}_val", 0))
                             live2 = int(st.session_state.get(f"{k2}_val", 0))
 
-                            n, p1, scores, p2, stat = st.columns([0.2, 1.1, 0.7, 1.1, 0.7])
+                            n, p1, scores, p2, stat = st.columns([0.2, 1.1, 0.6, 1.1, 0.7])
 
-                            with n: st.write(f"**{match_no}**")
-                            with p1: st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+                            # === MATCH RENDERING (5 COLUMNS) ===
+                            with n: 
+                                st.write(f"**{match_no}**")
 
-                            with h1:  # reuse h1 as container
-                                score_cols = st.columns([1, 1], gap="small")  # two tiny columns
+                            with p1: 
+                                st.markdown(f'<div class="player-name"><strong>{match.player1.name}</strong></div>', unsafe_allow_html=True)
+
+                            # === SCORES: TWO FIELDS SIDE-BY-SIDE IN ONE COLUMN ===
+                            with scores:  # ← This is the single column for both scores
+                                score_cols = st.columns([1, 1], gap="small")  # two tiny inputs
 
                                 with score_cols[0]:
                                     new1 = number_input_simple(k1, label=" ", disabled=locked)
@@ -777,11 +801,10 @@ def main():
                                     if new2 != live2:
                                         tournament.record_result(r, pairings.index(match), live1, new2)
 
-                            with p2: st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
+                            with p2: 
+                                st.markdown(f'<div class="player-name"><strong>{match.player2.name}</strong></div>', unsafe_allow_html=True)
 
-                            if live1 == live2 and live1 != 0:
-                                st.error("Ties are not allowed!")
-
+                            # === RESULT ===
                             with stat:
                                 if live1 == live2 == 0:
                                     st.write("–")
